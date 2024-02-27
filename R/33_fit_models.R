@@ -42,6 +42,7 @@ data <- full_data
     resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
     testDispersion(resids)
     testZeroInflation(resids)
+    save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_1.1.RData")
   }
   ## brms
   {
@@ -58,7 +59,7 @@ data <- full_data
       control = list(adapt_delta = 0.99)
     )
     summary(mod_brm)
-  }
+  
     
   ## INLA
   {
