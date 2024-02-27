@@ -1167,6 +1167,35 @@ data <- full_data
         facet_grid(~SHELF)
     }
   }
+  ## brms
+  {
+    form <- bf(
+            n.points | trials(total.points) ~ Dist.time*(s+c+d+b+u) +
+                    (1 | AIMS_REEF_NAME) +
+                    (1 | Site) +
+                    (1 | Transect),
+            zi = ~ 1 + (1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
+            family = "zero_inflated_binomial"
+    )
+    priors <- prior(normal(0, 1), class = "Intercept") +
+            prior(normal(0, 1), class = "b") +
+            prior(student_t(3, 0, 1), class = "sd") +
+            prior(logistic(0, 1), class = "Intercept", dpar = "zi")
+    mod_brm <- brm(form,
+      data = data,
+      prior = priors,
+      iter = 5000, warmup = 1000,
+      chains = 3, cores = 3,
+      thin = 4,
+      backend = "cmdstanr",
+      control = list(adapt_delta = 0.99),
+      silent =  0#,
+      ## refresh = 100
+    )
+    summary(mod_brm)
+    save(mod_brm, file = "../data/modelled/mod_brm_4.1.RData")
+    load(file = "../data/modelled/mod_brm_4.1.RData")
+  }
 }
 
 
