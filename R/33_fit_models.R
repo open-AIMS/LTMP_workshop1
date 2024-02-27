@@ -191,9 +191,6 @@ data <- full_data
   }
 }
 
-
-
-
 ## Add Before/After
 {
   ## glmmTMB
@@ -404,6 +401,74 @@ data <- full_data
 
 ## Before/After and Sector/Shelf
 {
+  ## Prepare data
+  {
+      data <- full_data
+
+      data <- data |>
+        dplyr::select(n.points, total.points, A_SECTOR, SHELF, SecShelf,
+          AIMS_REEF_NAME, Site, Transect, Dist.time)
+      ## what combinations are missing
+      data |>
+              group_by(Dist.time, SecShelf) |>
+              summarise(Points = sum(n.points)) |>
+              filter(Points == 0)
+      ## we need to exclude these
+      data <- data |>
+              filter(!SecShelf %in% c("CG M", "PC M", "PC O")) |>
+              droplevels()
+  }
+  ## glmmTMB
+  {
+    ## Fit model
+    {
+      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ Dist.time*SecShelf +
+                               (1|AIMS_REEF_NAME) +
+                               (1|Site) +
+                               (1|Transect),
+        ziformula =  ~ 1 + (1|AIMS_REEF_NAME) + (1|Site) + (1|Transect),
+        data = data,
+        family = "binomial", 
+        REML = TRUE
+      )
+
+      summary(mod_glmmTMB)
+      save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_3.1.RData")
+    }
+    ## DHARMa
+    {
+      resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
+      wrap_elements(~testUniformity(resids)) +
+        wrap_elements(~plotResiduals(resids)) +
+        wrap_elements(~testDispersion(resids)) 
+      testDispersion(resids)
+      testZeroInflation(resids)
+    }
+    ## Partial plots
+    {
+      mod_glmmTMB |>
+        emmeans(~ Dist.time * SecShelf, type = "response") |>
+        as.data.frame() |>
+        separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |> 
+        ggplot(aes(y = prob, x = A_SECTOR, colour = Dist.time)) +
+        geom_pointrange(aes(ymin = asymp.LCL, ymax = asymp.UCL), position = position_dodge(width = 0.5)) +
+        facet_grid(~SHELF)
+    }
+    ## Contrasts
+    {
+      mod_glmmTMB |>
+              emmeans(~ Dist.time | SecShelf, type = "response") |>
+              contrast(method = list(Dist.time = c(-1, 1))) |>
+              summary(infer = TRUE) |>
+              as.data.frame() |>
+              separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |>
+              ggplot(aes(x = odds.ratio, y = A_SECTOR)) +
+              geom_vline(xintercept = 1, linetype = "dashed") +
+              geom_pointrange(aes(xmin = asymp.LCL, xmax = asymp.UCL)) +
+        scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8)) +
+        facet_grid(~SHELF)
+    }
+  }
   ## INLA
   {
     ## Prepare data
@@ -625,57 +690,6 @@ data <- full_data
           Pl = ~ mean(.x < 1),
           Pg = ~ mean(.x > 1)
         )
-    }
-  }
-  ## glmmTMB
-  {
-    ## Fit model
-    {
-      library(glmmTMB)
-      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ Dist.time*SecShelf +
-                               (1|AIMS_REEF_NAME) +
-                               (1|Site) +
-                               (1|Transect),
-        ziformula = ~SecShelf,
-        data = data,
-        family = "binomial", 
-        REML = TRUE
-      )
-
-      summary(mod_glmmTMB)
-    }
-    ## DHARMa
-    {
-      resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
-      wrap_elements(~testUniformity(resids)) +
-        wrap_elements(~plotResiduals(resids)) +
-        wrap_elements(~testDispersion(resids)) 
-      testDispersion(resids)
-      testZeroInflation(resids)
-    }
-    ## Partial plots
-    {
-      mod_glmmTMB |>
-        emmeans(~ Dist.time * SecShelf, type = "response") |>
-        as.data.frame() |>
-        separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |> 
-        ggplot(aes(y = prob, x = A_SECTOR, colour = Dist.time)) +
-        geom_pointrange(aes(ymin = asymp.LCL, ymax = asymp.UCL), position = position_dodge(width = 0.5)) +
-        facet_grid(~SHELF)
-    }
-    ## Contrasts
-    {
-      mod_glmmTMB |>
-              emmeans(~ Dist.time | SecShelf, type = "response") |>
-              contrast(method = list(Dist.time = c(-1, 1))) |>
-              summary(infer = TRUE) |>
-              as.data.frame() |>
-              separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |>
-              ggplot(aes(x = odds.ratio, y = A_SECTOR)) +
-              geom_vline(xintercept = 1, linetype = "dashed") +
-              geom_pointrange(aes(xmin = asymp.LCL, xmax = asymp.UCL)) +
-        scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8)) +
-        facet_grid(~SHELF)
     }
   }
 }
