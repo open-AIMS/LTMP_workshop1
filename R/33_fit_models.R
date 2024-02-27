@@ -190,8 +190,8 @@ data <- full_data
       refresh = 100
     )
     summary(mod_brm)
-    save(mod_brm, file = "../data/modelled/mod_brm_1.1.RData")
-    load(file = "../data/modelled/mod_brm_1.1.RData")
+    save(mod_brm, file = "../data/modelled/mod_brm_1.2.RData")
+    load(file = "../data/modelled/mod_brm_1.2.RData")
   }
 }
 
