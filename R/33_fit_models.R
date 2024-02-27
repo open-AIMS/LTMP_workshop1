@@ -186,8 +186,8 @@ data <- full_data
       thin = 4,
       backend = "cmdstanr",
       control = list(adapt_delta = 0.99),
-      silent =  0,
-      refresh = 100
+      silent =  0#,
+      ## refresh = 100
     )
     summary(mod_brm)
     save(mod_brm, file = "../data/modelled/mod_brm_1.2.RData")
