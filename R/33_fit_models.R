@@ -63,6 +63,7 @@ data <- full_data
     )
     summary(mod_brm)
     save(mod_brm, file = "../data/modelled/mod_brm_1.1.RData")
+    load(file = "../data/modelled/mod_brm_1.1.RData")
   }
   ## INLA
   {
@@ -167,6 +168,30 @@ data <- full_data
     testDispersion(resids)
     testZeroInflation(resids)
     save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_1.2.RData")
+  }
+  ## brms
+  {
+    mod_brm <- brm(
+      bf(
+        n.points | trials(total.points) ~ 1 +
+          (1 | AIMS_REEF_NAME) +
+          (1 | Site) +
+          (1 | Transect),
+        zi = ~ 1,
+        family = "zero_inflated_binomial"
+      ),
+      data = data,
+      iter = 5000, warmup = 1000,
+      chains = 3, cores = 3,
+      thin = 4,
+      backend = "cmdstanr",
+      control = list(adapt_delta = 0.99),
+      silent =  0,
+      refresh = 100
+    )
+    summary(mod_brm)
+    save(mod_brm, file = "../data/modelled/mod_brm_1.1.RData")
+    load(file = "../data/modelled/mod_brm_1.1.RData")
   }
 }
 
