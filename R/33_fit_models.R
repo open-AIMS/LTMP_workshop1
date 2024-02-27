@@ -223,6 +223,34 @@ data <- full_data
     testZeroInflation(resids)
     save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_1.3.RData")
   }
+  ## brms
+  {
+    form <- bf(
+            n.points | trials(total.points) ~ 1 +
+                    (1 | AIMS_REEF_NAME) +
+                    (1 | Site) +
+                    (1 | Transect),
+            zi = ~(1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
+            family = "zero_inflated_binomial"
+    )
+    priors <- prior(normal(0, 1), class = "Intercept") +
+            prior(student_t(3, 0, 1), class = "sd") +
+            prior(logistic(0, 1), class = "Intercept", dpar = "zi")
+    mod_brm <- brm(form,
+      data = data,
+      prior = priors,
+      iter = 5000, warmup = 1000,
+      chains = 3, cores = 3,
+      thin = 4,
+      backend = "cmdstanr",
+      control = list(adapt_delta = 0.99),
+      silent =  0#,
+      ## refresh = 100
+    )
+    summary(mod_brm)
+    save(mod_brm, file = "../data/modelled/mod_brm_1.3.RData")
+    load(file = "../data/modelled/mod_brm_1.3.RData")
+  }
 }
 
 ## Add Before/After
@@ -1039,7 +1067,7 @@ data <- full_data
                                (1|AIMS_REEF_NAME) +
                                (1|Site) +
                                (1|Transect),
-        ziformula = ~1,
+        ziformula = ~ 1 + (1|AIMS_REEF_NAME) + (1|Site) + (1|Transect),
         data = data,
         family = "binomial", 
         REML = TRUE
@@ -1099,17 +1127,17 @@ data <- full_data
         SecShelf
       ) |>
       filter(!SecShelf %in% c("CG M", "PC M", "PC O")) |>
-      mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x))) |>
-      mutate(SecShelfP = paste(SecShelf, s, c, d, b, u))
+              mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x))) 
   }
   ## glmmTMB
   {
     ## Fit model
     {
-      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ Dist.time + SecShelfP,# +
-                               ## (1|AIMS_REEF_NAME) +
-                               ## (1|Site) +
-                               ## (1|Transect),
+      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1+#Dist.time +#+ (s + c + d + b + u) +
+                               (1 | Dist.time:SecShelf:(s+c+d+b+u)) +
+                               (1|AIMS_REEF_NAME) +
+                               (1|Site) +
+                               (1|Transect),
         ## ziformula = ~1,
         data = data,
         family = "binomial", 
@@ -1117,6 +1145,19 @@ data <- full_data
       )
 
       summary(mod_glmmTMB)
+      ranef(mod_glmmTMB) |> str()
+      ranef(mod_glmmTMB)[[1]][[2]]
+      newdata <- crossing(Dist.time = data$Dist.time) |>
+              crossing(s = c(0,1), d = 0, c = 0, b = 0, u = 0, SecShelf = as.character(unique(data$SecShelf)[1:10])) |>
+              mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA)
+      p <- predict(mod_glmmTMB, newdata = newdata, se.fit = TRUE)
+      newdata <- newdata |>
+              bind_cols(fit = p$fit, se = p$se.fit) |>
+              mutate(Pred = plogis(fit), lower = plogis(fit - 2 * se), upper = plogis(fit + 2 * se))
+      newdata
+      newdata |> ggplot(aes(y = Pred, x = Dist.time, colour = factor(s))) +
+        geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5)) +
+        facet_grid(~SecShelf)
     }
     ## DHARMa
     {
