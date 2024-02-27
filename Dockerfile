@@ -73,15 +73,6 @@ RUN R -e "options(repos = \
   install_cmdstan(cores = 2); \
 "  
 
-
-RUN R -e "options(repos = \
-  list(CRAN = 'https://packagemanager.posit.co/cran/2024-02-20/')); \
-  install.packages('glmmTMB');   \
-  install.packages('emmeans');   \
-  install.packages('DHARMa');   \
-  install.packages('patchwork');   \
-"  
-
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
   cmake \
@@ -106,6 +97,13 @@ RUN R -e "options(repos = \
   install.packages('progressr');  \
 "
 
+RUN R -e "options(repos = \
+  list(CRAN = 'https://packagemanager.posit.co/cran/2024-02-20/')); \
+  install.packages('glmmTMB');   \
+  install.packages('emmeans');   \
+  install.packages('DHARMa');   \
+  install.packages('patchwork');   \
+"  
 ## Create project directory in docker image 
 RUN mkdir ~/Project
 
