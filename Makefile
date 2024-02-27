@@ -8,4 +8,4 @@ build_singularity:
 	singularity build ltmp.sif docker-archive://ltmp.tar
 
 ssh_singularity:
-	scp ltmp.sif mlogan@hpc-l001.aims.gov.au:~/Work/AIMS/LTMP/LTMP-Workshop1
+	scp ltmp.sif mlogan@hpc-l001.aims.gov.au:~/Work/AIMS/LTMP/LTMP_workshop1/ltmp.sif
