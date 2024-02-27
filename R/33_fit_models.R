@@ -173,7 +173,6 @@ data <- full_data
 {
   ## glmmTMB
   {
-    
     mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1 +
                              (1|AIMS_REEF_NAME) +
                              (1|Site) +
@@ -197,6 +196,53 @@ data <- full_data
 
 ## Add Before/After
 {
+  ## glmmTMB
+  {
+    ## Fit model
+    {
+      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ Dist.time +
+                               (1|AIMS_REEF_NAME) +
+                               (1|Site) +
+                               (1|Transect),
+        ziformula =  ~ 1 + (1|AIMS_REEF_NAME) + (1|Site) + (1|Transect),
+        data = data,
+        family = "binomial", 
+        REML = TRUE
+      )
+
+      summary(mod_glmmTMB)
+    save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_2.1.RData")
+    }
+    ## DHARMa
+    {
+      resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
+      wrap_elements(~testUniformity(resids)) +
+        wrap_elements(~plotResiduals(resids)) +
+        wrap_elements(~testDispersion(resids)) 
+      testDispersion(resids)
+      testZeroInflation(resids)
+    }
+    ## Partial plots
+    {
+      mod_glmmTMB |>
+        emmeans(~Dist.time, type = "response") |>
+        as.data.frame() |> 
+        ggplot(aes(y = prob, x = Dist.time)) +
+        geom_pointrange(aes(ymin = asymp.LCL, ymax = asymp.UCL))
+    }
+    ## Contrasts
+    {
+      mod_glmmTMB |>
+              emmeans(~Dist.time, type = "response") |>
+              contrast(method = list(Dist.time = c(-1, 1))) |>
+              summary(infer = TRUE) |> 
+        as.data.frame() |> 
+        ggplot(aes(x = odds.ratio, y = contrast)) +
+              geom_vline(xintercept = 1, linetype = "dashed") +
+        geom_pointrange(aes(xmin = asymp.LCL, xmax = asymp.UCL)) +
+        scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8))
+    }
+  }
   ## INLA
   {
     ## Prepare data
@@ -352,52 +398,6 @@ data <- full_data
         scale_x_continuous("Effect (Before - After) on a fold scale",
           trans = "log2", breaks = scales::extended_breaks(n = 8)
         )
-    }
-  }
-  ## glmmTMB
-  {
-    ## Fit model
-    {
-      library(glmmTMB)
-      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ Dist.time +
-                               (1|AIMS_REEF_NAME) +
-                               (1|Site) +
-                               (1|Transect),
-        data = data,
-        family = "binomial", 
-        REML = TRUE
-      )
-
-      summary(mod_glmmTMB)
-    }
-    ## DHARMa
-    {
-      resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
-      wrap_elements(~testUniformity(resids)) +
-        wrap_elements(~plotResiduals(resids)) +
-        wrap_elements(~testDispersion(resids)) 
-      testDispersion(resids)
-      testZeroInflation(resids)
-    }
-    ## Partial plots
-    {
-      mod_glmmTMB |>
-        emmeans(~Dist.time, type = "response") |>
-        as.data.frame() |> 
-        ggplot(aes(y = prob, x = Dist.time)) +
-        geom_pointrange(aes(ymin = asymp.LCL, ymax = asymp.UCL))
-    }
-    ## Contrasts
-    {
-      mod_glmmTMB |>
-              emmeans(~Dist.time, type = "response") |>
-              contrast(method = list(Dist.time = c(-1, 1))) |>
-              summary(infer = TRUE) |> 
-        as.data.frame() |> 
-        ggplot(aes(x = odds.ratio, y = contrast)) +
-              geom_vline(xintercept = 1, linetype = "dashed") +
-        geom_pointrange(aes(xmin = asymp.LCL, xmax = asymp.UCL)) +
-        scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8))
     }
   }
 }
