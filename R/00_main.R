@@ -1,5 +1,7 @@
 library(tidyverse)
 library(INLA)
+library(glmmTMB)
+library(brms)
 library(posterior)
 library(tidybayes)
 library(DHARMa)

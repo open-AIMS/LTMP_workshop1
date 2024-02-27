@@ -26,6 +26,29 @@ data <- full_data
 
 ## Start with an intercept only model
 {
+
+  ## glmmTMB
+  {
+    
+    mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1 +
+                             (1|AIMS_REEF_NAME) +
+                             (1|Site) +
+                             (1|Transect),
+      data = data,
+      family = "binomial", 
+      REML = TRUE
+    )
+
+    summary(mod_glmmTMB)
+    resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
+    testDispersion(resids)
+    testZeroInflation(resids)
+
+  }
+    ## brms
+    {
+    }
+    
   ## INLA
   {
     ## Fit model
@@ -106,25 +129,6 @@ data <- full_data
       testDispersion(mod_resids)
       testZeroInflation(mod_resids)
     }
-  }
-  ## glmmTMB
-  {
-    
-    library(glmmTMB)
-    mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1 +
-                             (1|AIMS_REEF_NAME) +
-                             (1|Site) +
-                             (1|Transect),
-      data = data,
-      family = "binomial", 
-      REML = TRUE
-    )
-
-    summary(mod_glmmTMB)
-    resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
-    testDispersion(resids)
-    testZeroInflation(resids)
-
   }
 }
 
