@@ -1,0 +1,11 @@
+* Making the docker image
+Option 1 - ~make .~
+Option 2 - ~docker build . --tag ltmp~
+* Test the docker image
+~docker run --rm -it ltmp R~
+this will drop you into an R session inside the container
+* Prune system
+~docker system prune~
+* Remove images
+~docker image rm REPOSITORYNAME:TAG~
+

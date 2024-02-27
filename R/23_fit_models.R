@@ -309,6 +309,7 @@ full_data <- data
         droplevels() |>
         mutate(
           SecShelfYr = forcats::fct_relevel(SecShelfYr, "IN M 2016")
+          ## SecShelfYr = forcats::fct_relevel(SecShelfYr, "SW M 2014")
         ) |>
         dplyr::select(-Points, -EXCLUDE)
 
@@ -324,11 +325,6 @@ full_data <- data
     }
     ## Fit model
     {
-      ## control.fixed <- list(
-      ##                 mean.intercept = 0,
-      ##                 prec.intercept = 0.01,
-      ##                 mean = 0,
-      ##                 prec = 0.1)
       mod <- inla(n.points ~ SecShelfYr +
                     f(model = "iid", AIMS_REEF_NAME) +
                     f(model = "iid", Site) +
@@ -338,8 +334,7 @@ full_data <- data
         family = "zeroinflatedbinomial1", #"zeroinflatedbetabinomial2", #"binomial", 
         control.predictor = list(link = 1, compute = TRUE),
         control.compute = list(config = TRUE,
-          dic = TRUE, waic = TRUE, cpo = TRUE,
-          return.marginals.predictor = TRUE
+          dic = TRUE, waic = TRUE, cpo = TRUE
         )#,
         ## control.fixed = control.fixed
       )

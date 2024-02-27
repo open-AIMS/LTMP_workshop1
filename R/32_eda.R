@@ -12,6 +12,15 @@ data |>
 
 ## Raw means to get a sense of the data
 data |>
+  group_by(Dist.time) |>
+  summarise(cover = mean(n.points / total.points),
+    cover_sd = sd(n.points / total.points),
+    lower = cover - cover_sd,
+    upper = cover + cover_sd) |>
+  ggplot(aes(y = cover, x = Dist.time, colour = Dist.time)) +
+  geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.4))
+
+data |>
   group_by(Dist.time, A_SECTOR, SHELF) |>
   summarise(cover = mean(n.points / total.points),
     cover_sd = sd(n.points / total.points),
