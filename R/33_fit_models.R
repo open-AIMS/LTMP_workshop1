@@ -46,22 +46,22 @@ data <- full_data
   }
   ## brms
   {
-          mod_brm <- brm(
-                  bf(
-                          n.points | trials(total.points) ~ 1 +
-                                  (1 | AIMS_REEF_NAME) +
-                                  (1 | Site) +
-                                  (1 | Transect),
-                          family = "binomial"
-                  ),
-                  data = data,
-                  iter = 5000, warmup = 1000,
-                  chains = 3, cores = 3,
-                  thin = 4,
-                  backend = "cmdstanr",
-                  control = list(adapt_delta = 0.99)
-          )
-          summary(mod_brm)
+    mod_brm <- brm(
+      bf(
+        n.points | trials(total.points) ~ 1 +
+          (1 | AIMS_REEF_NAME) +
+          (1 | Site) +
+          (1 | Transect),
+        family = "binomial"
+      ),
+      data = data,
+      iter = 5000, warmup = 1000,
+      chains = 3, cores = 3,
+      thin = 4,
+      backend = "cmdstanr",
+      control = list(adapt_delta = 0.99)
+    )
+    summary(mod_brm)
   }
   ## INLA
   {
