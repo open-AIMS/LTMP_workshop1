@@ -302,6 +302,35 @@ data <- full_data
         scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8))
     }
   }
+  ## brms
+  {
+    form <- bf(
+            n.points | trials(total.points) ~ Dist.time +
+                    (1 | AIMS_REEF_NAME) +
+                    (1 | Site) +
+                    (1 | Transect),
+            zi = ~ 1 + (1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
+            family = "zero_inflated_binomial"
+    )
+    priors <- prior(normal(0, 1), class = "Intercept") +
+            prior(normal(0, 1), class = "b") +
+            prior(student_t(3, 0, 1), class = "sd") +
+            prior(logistic(0, 1), class = "Intercept", dpar = "zi")
+    mod_brm <- brm(form,
+      data = data,
+      prior = priors,
+      iter = 5000, warmup = 1000,
+      chains = 3, cores = 3,
+      thin = 4,
+      backend = "cmdstanr",
+      control = list(adapt_delta = 0.99),
+      silent =  0#,
+      ## refresh = 100
+    )
+    summary(mod_brm)
+    save(mod_brm, file = "../data/modelled/mod_brm_2.1.RData")
+    load(file = "../data/modelled/mod_brm_2.1.RData")
+  }
   ## INLA
   {
     ## Prepare data
@@ -1113,7 +1142,7 @@ data <- full_data
 
 
 
-## SecShel, Dist.time and Disturbances (zi Intercept only) 
+## SecShelf, Dist.time and Disturbances (zi Intercept only) 
 {
   ## Prepare data
   {
@@ -1133,12 +1162,14 @@ data <- full_data
   {
     ## Fit model
     {
-      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1+#Dist.time +#+ (s + c + d + b + u) +
-                               (1 | Dist.time:SecShelf:(s+c+d+b+u)) +
+      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1+ (s + c + d + b + u) +
+                               (1 | Dist.time:SecShelf:(s + c + d + b + u)) +
                                (1|AIMS_REEF_NAME) +
                                (1|Site) +
                                (1|Transect),
-        ## ziformula = ~1,
+        ziformula = ~1 + (1|AIMS_REEF_NAME) +
+                               (1|Site) +
+                               (1|Transect),
         data = data,
         family = "binomial", 
         REML = TRUE
@@ -1148,16 +1179,35 @@ data <- full_data
       ranef(mod_glmmTMB) |> str()
       ranef(mod_glmmTMB)[[1]][[2]]
       newdata <- crossing(Dist.time = data$Dist.time) |>
-              crossing(s = c(0,1), d = 0, c = 0, b = 0, u = 0, SecShelf = as.character(unique(data$SecShelf)[1:10])) |>
-              mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA)
+        crossing(s = c(0,1), d = c(0, 1), c = c(0, 1), b = c(0, 1), u = c(0, 1),
+          SecShelf = as.character(unique(data$SecShelf)[1:10])) |>
+        mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA, Dist.number =  NA)
+      newdata <- newdata |>
+        filter((Dist.time == "Before" & s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 1 & d == 0 & c == 0 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 1 & c == 0 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 0 & c == 1 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 0 & u == 1) 
+        )
       p <- predict(mod_glmmTMB, newdata = newdata, se.fit = TRUE)
       newdata <- newdata |>
-              bind_cols(fit = p$fit, se = p$se.fit) |>
-              mutate(Pred = plogis(fit), lower = plogis(fit - 2 * se), upper = plogis(fit + 2 * se))
+        bind_cols(fit = p$fit, se = p$se.fit) |>
+        mutate(Pred = plogis(fit), lower = plogis(fit - 2 * se), upper = plogis(fit + 2 * se))
+      newdata <- newdata |>
+              mutate(Dist = case_when(
+                      s == 1 ~ "s",
+                      c == 1 ~ "c",
+                      d == 1 ~ "d",
+                      b == 1 ~ "b",
+                      u == 1 ~ "u",
+                      .default = "Before"
+              )) |>
+        separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ")
       newdata
-      newdata |> ggplot(aes(y = Pred, x = Dist.time, colour = factor(s))) +
+      newdata |> ggplot(aes(y = Pred, x = Dist, colour = factor(Dist.time))) +
         geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5)) +
-        facet_grid(~SecShelf)
+        facet_grid(A_SECTOR ~ SHELF, scales = "free")
     }
     ## DHARMa
     {
