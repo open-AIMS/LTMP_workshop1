@@ -230,7 +230,7 @@ data <- full_data
                     (1 | AIMS_REEF_NAME) +
                     (1 | Site) +
                     (1 | Transect),
-            zi = ~(1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
+            zi = ~ 1 + (1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
             family = "zero_inflated_binomial"
     )
     priors <- prior(normal(0, 1), class = "Intercept") +
