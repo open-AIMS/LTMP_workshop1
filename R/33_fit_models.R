@@ -62,6 +62,7 @@ data <- full_data
       control = list(adapt_delta = 0.99)
     )
     summary(mod_brm)
+    save(mod_brm, file = "../data/modelled/mod_brm_1.1.RData")
   }
   ## INLA
   {
