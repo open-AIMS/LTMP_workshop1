@@ -169,6 +169,28 @@ data <- full_data
   }
 }
 
+## Switch to zero-inflated model (RE)
+{
+  ## glmmTMB
+  {
+    
+    mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1 +
+                             (1|AIMS_REEF_NAME) +
+                             (1|Site) +
+                             (1|Transect),
+      ziformula =  ~ 1 + (1|AIMS_REEF_NAME) + (1|Site) + (1|Transect),
+      data = data,
+      family = "binomial", 
+      REML = TRUE
+    )
+
+    summary(mod_glmmTMB)
+    resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
+    testDispersion(resids)
+    testZeroInflation(resids)
+    save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_1.3.RData")
+  }
+}
 
 
 
