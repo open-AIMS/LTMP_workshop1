@@ -1242,6 +1242,59 @@ data <- full_data
         scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8)) +
         facet_grid(~SHELF)
     }
+    
+    ## Fit model
+    {
+      data_pred <- data |>
+        bind_rows(newdata |>
+                    mutate(SecShelf =  paste(A_SECTOR, SHELF)) |>
+                    dplyr::select(Dist.time, SecShelf, s, b, c, d, u)) |> 
+        mutate(SS = paste(Dist.time, SecShelf, s, b, c, d, u))
+      i_newdata <- (nrow(data) + 1):nrow(data_pred)
+      mod <- inla(n.points ~ Dist.time + (s + b + c + d + u) +
+                    f(model = "iid", SS) +
+                    f(model = "iid", AIMS_REEF_NAME) +
+                    f(model = "iid", Site) +
+                    f(model = "iid", Transect),
+        data = data_pred,
+        Ntrials = data_pred$total.points,
+        ## lincomb =  lincomb,
+        family = "zeroinflatedbinomial1", #"binomial" 
+        control.predictor = list(link = 1, compute = TRUE),
+        control.compute = list(config = TRUE,
+          dic = TRUE, waic = TRUE, cpo = TRUE
+        )
+      )
+      summary(mod)
+      ## autoplot(mod)
+      newdata_pred <- newdata |>
+        bind_cols(mod$summary.fitted.values[i_newdata, ])
+      newdata_pred 
+      newdata_pred |> ggplot(aes(y = `0.5quant`, x = Dist, colour = factor(Dist.time))) +
+        geom_pointrange(aes(ymin = `0.025quant`, ymax = `0.975quant`), position = position_dodge(width = 0.5)) +
+        facet_grid(A_SECTOR ~ SHELF, scales = "free")
+
+
+      
+  draws <- inla.posterior.sample(n=1000, result = mod)
+  cellmeans <- newdata |> bind_cols(sapply(draws, function(x) x$latent[i_newdata]))
+cellmeans <- cellmeans |>
+        pivot_longer(cols = matches("^[\\.]{3}[0-9]*"), names_to = ".draws") |>
+        dplyr::select(Dist.time, A_SECTOR, SHELF, Dist, .draws, value) |>
+        posterior::as_draws() |>
+        mutate(.draw = .draws) |>
+        dplyr::select(-.draws) |>
+        mutate(value = plogis(value)) |> 
+        group_by(Dist.time, A_SECTOR, SHELF, Dist) |>
+        summarise_draws(median, HDInterval::hdi)
+
+      cellmeans |> ggplot(aes(y = median, x = Dist, colour = factor(Dist.time))) +
+        geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5)) +
+        facet_grid(A_SECTOR ~ SHELF, scales = "free")
+      
+  contents <- mod$misc$configs$contents
+      preds <- posterior_predict.inla(mod, newdata = data_pred[i_newdata, ])
+    }
   }
   ## INLA
   {
