@@ -1257,11 +1257,115 @@ data <- full_data
       filter(!SecShelf %in% c("CG M", "PC M", "PC O")) |>
               mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x))) 
   }
+  ## Raw means
+  {
+    data_summ_s <- data |>
+      dplyr::select(n.points, total.points, Dist.time, SecShelf, s, c, d, b, u) |>
+      group_by(Dist.time, SecShelf, s) |>
+      summarise(
+        Median = median(n.points / total.points),
+        Mean = mean(n.points / total.points),
+        SD = sd(n.points / total.points),
+        N = n()
+      ) |>
+      mutate(
+        lower = Mean - 2 * (SD / N),
+        upper = Mean + 2 * (SD / N)
+      ) |>
+      separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ") |>
+              filter((Dist.time == "Before" & s == 0) | Dist.time == "After" & s == 1)
+
+    data_summ_c <- data |>
+      dplyr::select(n.points, total.points, Dist.time, SecShelf, s, c, d, b, u) |>
+      group_by(Dist.time, SecShelf, c) |>
+      summarise(
+        Median = median(n.points / total.points),
+        Mean = mean(n.points / total.points),
+        SD = sd(n.points / total.points),
+        N = n()
+      ) |>
+      mutate(
+        lower = Mean - 2 * (SD / N),
+        upper = Mean + 2 * (SD / N)
+      ) |>
+      separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ") |>
+              filter((Dist.time == "Before" & c == 0) | Dist.time == "After" & c == 1)
+
+    data_summ_d <- data |>
+      dplyr::select(n.points, total.points, Dist.time, SecShelf, s, c, d, b, u) |>
+      group_by(Dist.time, SecShelf, d) |>
+      summarise(
+        Median = median(n.points / total.points),
+        Mean = mean(n.points / total.points),
+        SD = sd(n.points / total.points),
+        N = n()
+      ) |>
+      mutate(
+        lower = Mean - 2 * (SD / N),
+        upper = Mean + 2 * (SD / N)
+      ) |>
+      separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ") |>
+              filter((Dist.time == "Before" & d == 0) | Dist.time == "After" & d == 1)
+
+    data_summ_b <- data |>
+      dplyr::select(n.points, total.points, Dist.time, SecShelf, s, c, d, b, u) |>
+      group_by(Dist.time, SecShelf, b) |>
+      summarise(
+        Median = median(n.points / total.points),
+        Mean = mean(n.points / total.points),
+        SD = sd(n.points / total.points),
+        N = n()
+      ) |>
+      mutate(
+        lower = Mean - 2 * (SD / N),
+        upper = Mean + 2 * (SD / N)
+      ) |>
+      separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ") |>
+              filter((Dist.time == "Before" & b == 0) | Dist.time == "After" & b == 1)
+    
+    data_summ_u <- data |>
+      dplyr::select(n.points, total.points, Dist.time, SecShelf, s, c, d, b, u) |>
+      group_by(Dist.time, SecShelf, u) |>
+      summarise(
+        Median = median(n.points / total.points),
+        Mean = mean(n.points / total.points),
+        SD = sd(n.points / total.points),
+        N = n()
+      ) |>
+      mutate(
+        lower = Mean - 2 * (SD / N),
+        upper = Mean + 2 * (SD / N)
+      ) |>
+      separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ") |>
+              filter((Dist.time == "Before" & u == 0) | Dist.time == "After" & u == 1)
+
+    data_summ <- bind_rows(data_summ_s, data_summ_c, data_summ_d,
+      data_summ_b, data_summ_u) |> 
+      mutate(Dist = case_when(
+        s == 1 ~ "s",
+        c == 1 ~ "c",
+        d == 1 ~ "d",
+        b == 1 ~ "b",
+        u == 1 ~ "u",
+        .default = "Before"
+      ))
+      
+    ## data_summ |>
+    ##   ggplot(aes(y = Mean, x = Dist.time)) +
+    ##   geom_pointrange(aes(ymin = lower, ymax = upper)) +
+    ##   facet_grid(A_SECTOR ~ SHELF, scales = "free")
+
+    data_summ |> ggplot(aes(y = Mean, x = Dist, colour = factor(Dist.time))) +
+      geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5)) +
+      facet_grid(A_SECTOR ~ SHELF, scales = "free")
+  
+  }
   ## glmmTMB
   {
     ## Fit model
     {
-      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1+ (s + c + d + b + u) +
+      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1+
+                               (s + c + d + b + u) +
                                (1 | Dist.time:SecShelf:(s + c + d + b + u)) +
                                (1|AIMS_REEF_NAME) +
                                (1|Site) +
@@ -1275,11 +1379,26 @@ data <- full_data
       )
 
       summary(mod_glmmTMB)
-      ranef(mod_glmmTMB) |> str()
-      ranef(mod_glmmTMB)[[1]][[2]]
+
+    }
+    ## DHARMa
+    {
+      resids <- simulateResiduals(mod_glmmTMB, plot = TRUE, integerResponse = TRUE)
+      wrap_elements(~testUniformity(resids)) +
+        wrap_elements(~plotResiduals(resids)) +
+        wrap_elements(~testDispersion(resids)) 
+      testDispersion(resids)
+      testZeroInflation(resids)
+    }
+    ## Partial plots
+    {
+      ## Since this model operates mainly through random effects, we cannot
+      ## use emmeans to produce the cell means or contrasts
+      ## Instead we just have to perform predictions.
+      
       newdata <- crossing(Dist.time = data$Dist.time) |>
         crossing(s = c(0,1), d = c(0, 1), c = c(0, 1), b = c(0, 1), u = c(0, 1),
-          SecShelf = as.character(unique(data$SecShelf)[1:10])) |>
+          SecShelf = as.character(unique(data$SecShelf))) |>
         mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA, Dist.number =  NA)
       newdata <- newdata |>
         filter((Dist.time == "Before" & s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
@@ -1289,111 +1408,35 @@ data <- full_data
                  (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
                  (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 0 & u == 1) 
         )
+
       p <- predict(mod_glmmTMB, newdata = newdata, se.fit = TRUE)
       newdata <- newdata |>
         bind_cols(fit = p$fit, se = p$se.fit) |>
         mutate(Pred = plogis(fit), lower = plogis(fit - 2 * se), upper = plogis(fit + 2 * se))
       newdata <- newdata |>
-              mutate(Dist = case_when(
-                      s == 1 ~ "s",
-                      c == 1 ~ "c",
-                      d == 1 ~ "d",
-                      b == 1 ~ "b",
-                      u == 1 ~ "u",
-                      .default = "Before"
-              )) |>
+        mutate(Dist = case_when(
+          s == 1 ~ "s",
+          c == 1 ~ "c",
+          d == 1 ~ "d",
+          b == 1 ~ "b",
+          u == 1 ~ "u",
+          .default = "Before"
+        )) |>
         separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ")
-      newdata
-      newdata |> ggplot(aes(y = Pred, x = Dist, colour = factor(Dist.time))) +
-        geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5)) +
+
+      newdata |> dplyr::select(Dist.time, Dist, A_SECTOR, SHELF, Pred, lower, upper)
+      
+      newdata |>
+        ggplot(aes(y = Pred, x = Dist, colour = factor(Dist.time))) +
+        geom_pointrange(aes(ymin = lower, ymax = upper),
+          position = position_dodge(width = 0.5)) +
         facet_grid(A_SECTOR ~ SHELF, scales = "free")
-    }
-    ## DHARMa
-    {
-      resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
-      wrap_elements(~testUniformity(resids)) +
-        wrap_elements(~plotResiduals(resids)) +
-        wrap_elements(~testDispersion(resids)) 
-      testDispersion(resids)
-      testZeroInflation(resids)
-    }
-    ## Partial plots
-    {
-      mod_glmmTMB |>
-        emmeans(~ c, type = "response") |>
-        as.data.frame() |>
-        separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |> 
-        ggplot(aes(y = prob, x = A_SECTOR, colour = Dist.time)) +
-        geom_pointrange(aes(ymin = asymp.LCL, ymax = asymp.UCL), position = position_dodge(width = 0.5)) +
-        facet_grid(~SHELF)
     }
     ## Contrasts
     {
-      mod_glmmTMB |>
-              emmeans(~ Dist.time | SecShelf, type = "response") |>
-              contrast(method = list(Dist.time = c(-1, 1))) |>
-              summary(infer = TRUE) |>
-              as.data.frame() |>
-              separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |>
-              ggplot(aes(x = odds.ratio, y = A_SECTOR)) +
-              geom_vline(xintercept = 1, linetype = "dashed") +
-              geom_pointrange(aes(xmin = asymp.LCL, xmax = asymp.UCL)) +
-        scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8)) +
-        facet_grid(~SHELF)
+      ## These are not really possible - at least not with confidence intervals
     }
     
-    ## Fit model
-    {
-      data_pred <- data |>
-        bind_rows(newdata |>
-                    mutate(SecShelf =  paste(A_SECTOR, SHELF)) |>
-                    dplyr::select(Dist.time, SecShelf, s, b, c, d, u)) |> 
-        mutate(SS = paste(Dist.time, SecShelf, s, b, c, d, u))
-      i_newdata <- (nrow(data) + 1):nrow(data_pred)
-      mod <- inla(n.points ~ Dist.time + (s + b + c + d + u) +
-                    f(model = "iid", SS) +
-                    f(model = "iid", AIMS_REEF_NAME) +
-                    f(model = "iid", Site) +
-                    f(model = "iid", Transect),
-        data = data_pred,
-        Ntrials = data_pred$total.points,
-        ## lincomb =  lincomb,
-        family = "zeroinflatedbinomial1", #"binomial" 
-        control.predictor = list(link = 1, compute = TRUE),
-        control.compute = list(config = TRUE,
-          dic = TRUE, waic = TRUE, cpo = TRUE
-        )
-      )
-      summary(mod)
-      ## autoplot(mod)
-      newdata_pred <- newdata |>
-        bind_cols(mod$summary.fitted.values[i_newdata, ])
-      newdata_pred 
-      newdata_pred |> ggplot(aes(y = `0.5quant`, x = Dist, colour = factor(Dist.time))) +
-        geom_pointrange(aes(ymin = `0.025quant`, ymax = `0.975quant`), position = position_dodge(width = 0.5)) +
-        facet_grid(A_SECTOR ~ SHELF, scales = "free")
-
-
-      
-  draws <- inla.posterior.sample(n=1000, result = mod)
-  cellmeans <- newdata |> bind_cols(sapply(draws, function(x) x$latent[i_newdata]))
-cellmeans <- cellmeans |>
-        pivot_longer(cols = matches("^[\\.]{3}[0-9]*"), names_to = ".draws") |>
-        dplyr::select(Dist.time, A_SECTOR, SHELF, Dist, .draws, value) |>
-        posterior::as_draws() |>
-        mutate(.draw = .draws) |>
-        dplyr::select(-.draws) |>
-        mutate(value = plogis(value)) |> 
-        group_by(Dist.time, A_SECTOR, SHELF, Dist) |>
-        summarise_draws(median, HDInterval::hdi)
-
-      cellmeans |> ggplot(aes(y = median, x = Dist, colour = factor(Dist.time))) +
-        geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5)) +
-        facet_grid(A_SECTOR ~ SHELF, scales = "free")
-      
-  contents <- mod$misc$configs$contents
-      preds <- posterior_predict.inla(mod, newdata = data_pred[i_newdata, ])
-    }
   }
   ## brms
   {
@@ -1427,72 +1470,114 @@ cellmeans <- cellmeans |>
   }
   ## INLA
   {
+    ## Prepare data OLD
+    {
+      if (1 != 2) {
+        data <- full_data
+
+        ## Focus on only the necessary variables
+        data <- data |>
+          dplyr::select(
+            n.points, total.points, Dist.time, s, c, d, b, u,
+            AIMS_REEF_NAME, Site, Transect, SecShelf, Dist.number
+          ) |>
+          mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x)))
+        ## Cellmeans
+        newdata <- data.frame(Dist.time = unique(data$Dist.time)) |>
+          crossing(
+            SecShelf = data$SecShelf,
+            s = data$s, c = data$c, d = data$d, b = data$b, u = data$u
+          )
+
+        ## Restrict this to only where the sum of the rows is one so
+        ## that our newdata is one row per disturbance (for Before and
+        ## After)
+        newdata <- newdata |>
+          rowwise() |>
+          filter(sum(c_across(where(is.numeric))) == 1)
+        ## Further compress this to just a single Before (no disturbances)
+        ## and single disturbance types for each After
+        newdata <- newdata |>
+          filter(Dist.time == "After") |>
+          bind_rows(data.frame(
+            Dist.time = "Before",
+            s = 0, c = 0, d = 0, b = 0, u = 0
+          ) |> crossing(SecShelf = newdata$SecShelf))
+
+        data_pred <- data |>
+          bind_rows(newdata) |>
+          mutate(SecShelf = forcats::fct_relevel(SecShelf, "CA M"))
+        i_newdata <- (nrow(data) + 1):nrow(data_pred)
+
+        ## Pre-defined contrasts
+        ## Compare Afters (for each disturbance) to Before (no disturbance)
+        ## for each sector/shelf
+        Xmat <- model.matrix(~ SecShelf*Dist.time * (s + b + c + d + u), data = newdata)
+
+        nd <- newdata |>
+          mutate(Dist = case_when(s == 1 ~ "s",
+            c == 1 ~ "c",
+            d == 1 ~ "d",
+            b == 1 ~ "b",
+            u == 1 ~ "u")) |>
+          dplyr::select(-any_of(c("s", "c", "d", "b", "u"))) |>
+          bind_cols(Xmat) |>
+          filter(!is.na(Dist)) |>
+          mutate(`(Intercept)` = 0) |>
+          dplyr::select(-Dist.time, -Dist, -SecShelf) |>
+          as.matrix()
+
+        lincomb <- inla.make.lincombs(as.data.frame(nd))
+
+        nd1 <- newdata |>
+          mutate(Dist = case_when(s == 1 ~ "s",
+            c == 1 ~ "c",
+            d == 1 ~ "d",
+            b == 1 ~ "b",
+            u == 1 ~ "u")) |>
+          dplyr::select(-any_of(c("s", "c", "d", "b", "u"))) |> 
+          filter(!is.na(Dist)) 
+      }
+    }
     ## Prepare data
     {
-      data <- full_data
-
-      ## Focus on only the necessary variables
-      data <- data |>
-        dplyr::select(
-          n.points, total.points, Dist.time, s, c, d, b, u,
-          AIMS_REEF_NAME, Site, Transect, SecShelf, Dist.number
-        ) |>
-        mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x)))
-      ## Cellmeans
-      newdata <- data.frame(Dist.time = unique(data$Dist.time)) |>
-        crossing(
-          SecShelf = data$SecShelf,
-          s = data$s, c = data$c, d = data$d, b = data$b, u = data$u
+      newdata <- crossing(Dist.time = data$Dist.time) |>
+        crossing(s = c(0,1), d = c(0, 1), c = c(0, 1), b = c(0, 1), u = c(0, 1),
+          SecShelf = as.character(unique(data$SecShelf))) |>
+        separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ", remove = FALSE) |> 
+        mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA, Dist.number =  NA)
+      newdata <- newdata |>
+        filter((Dist.time == "Before" & s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 1 & d == 0 & c == 0 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 1 & c == 0 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 0 & c == 1 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 0 & u == 1) 
         )
 
-      ## Restrict this to only where the sum of the rows is one so
-      ## that our newdata is one row per disturbance (for Before and
-      ## After)
-      newdata <- newdata |>
-              rowwise() |>
-              filter(sum(c_across(where(is.numeric))) == 1)
-      ## Further compress this to just a single Before (no disturbances)
-      ## and single disturbance types for each After
-      newdata <- newdata |>
-        filter(Dist.time == "After") |>
-        bind_rows(data.frame(
-          Dist.time = "Before",
-          s = 0, c = 0, d = 0, b = 0, u = 0
-        ) |> crossing(SecShelf = newdata$SecShelf))
-
       data_pred <- data |>
-              bind_rows(newdata) |>
-              mutate(SecShelf = forcats::fct_relevel(SecShelf, "CA M"))
+        bind_rows(newdata |>
+                    dplyr::select(Dist.time, SecShelf, s, b, c, d, u)) |> 
+        mutate(SS = paste(Dist.time, SecShelf, s, b, c, d, u))
       i_newdata <- (nrow(data) + 1):nrow(data_pred)
-
-      ## Pre-defined contrasts
-      ## Compare Afters (for each disturbance) to Before (no disturbance)
-      ## for each sector/shelf
-      Xmat <- model.matrix(~ SecShelf*Dist.time * (s + b + c + d + u), data = newdata)
-
-      nd <- newdata |>
-        mutate(Dist = case_when(s == 1 ~ "s",
-          c == 1 ~ "c",
-          d == 1 ~ "d",
-          b == 1 ~ "b",
-          u == 1 ~ "u")) |>
-        dplyr::select(-any_of(c("s", "c", "d", "b", "u"))) |>
-        bind_cols(Xmat) |>
-        filter(!is.na(Dist)) |>
-        mutate(`(Intercept)` = 0) |>
-        dplyr::select(-Dist.time, -Dist, -SecShelf) |>
-       as.matrix()
-
-      lincomb <- inla.make.lincombs(as.data.frame(nd))
-
-      nd1 <- newdata |>
-        mutate(Dist = case_when(s == 1 ~ "s",
-          c == 1 ~ "c",
-          d == 1 ~ "d",
-          b == 1 ~ "b",
-          u == 1 ~ "u")) |>
-        dplyr::select(-any_of(c("s", "c", "d", "b", "u"))) |> 
-        filter(!is.na(Dist)) 
+    }
+    ## Fit model
+    {
+      mod <- inla(n.points ~ Dist.time + (s + b + c + d + u) +
+                    f(model = "iid", SS) +
+                    f(model = "iid", AIMS_REEF_NAME) +
+                    f(model = "iid", Site) +
+                    f(model = "iid", Transect),
+        data = data_pred,
+        Ntrials = data_pred$total.points,
+        family = "zeroinflatedbinomial1", #"binomial" 
+        control.predictor = list(link = 1, compute = TRUE),
+        control.compute = list(config = TRUE,
+          dic = TRUE, waic = TRUE, cpo = TRUE
+        )
+      )
+      summary(mod)
+      ## autoplot(mod)
     }
     ## Fit model
     {
@@ -1574,50 +1659,147 @@ cellmeans <- cellmeans |>
     ## Partial plots
     {
       newdata_pred <- newdata |>
-        bind_cols(mod$summary.fitted.values[i_newdata, ])
-      newdata_pred 
-
-      newdata_pred <- newdata_pred |>
+        bind_cols(mod$summary.fitted.values[i_newdata, ]) |> 
         mutate(Dist = case_when(
           s == 1 ~ "s",
           c == 1 ~ "c",
           d == 1 ~ "d",
           b == 1 ~ "b",
-          u == 1 ~ "u"
-        ))
-      newdata_pred <- newdata_pred |>
-        separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE)
-      ## newdata_before <- data.frame(Dist = unique(newdata_pred$Dist)) |>
-      ##   crossing(
-      ##     A_SECTOR = newdata_pred$A_SECTOR,
-      ##     SHELF = newdata_pred$SHELF
-      ##   ) |>
-      ##   bind_cols(newdata_pred |> filter(Dist.time == "Before") |> dplyr::select(-SecShelf, -A_SECTOR, -SHELF, -s, -c, -d, -b, -u, -Dist))
+          u == 1 ~ "u",
+          .default = "Before"
+        )) |>
+        separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ")
+      newdata_pred 
       
-        newdata_pred |>
-                ## bind_rows(newdata_before) |> 
-              separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |> 
-              ggplot(aes(y = `0.5quant`, x = factor(Dist), color = Dist.time)) +
-              geom_pointrange(
-                      aes(
-                              ymin = `0.025quant`,
-                              ymax = `0.975quant`
-                      ),
-                      position = position_dodge(width = 0.5)
-              ) +
-      facet_grid(A_SECTOR ~ SHELF)
+      newdata_pred |>
+        ggplot(aes(y = `0.5quant`, x = Dist, colour = factor(Dist.time))) +
+        geom_pointrange(aes(ymin = `0.025quant`, ymax = `0.975quant`),
+          position = position_dodge(width = 0.5)) +
+        facet_grid(A_SECTOR ~ SHELF, scales = "free")
+
+
+      newdata_pred |> ggplot(aes(y = `0.5quant`, x = Dist, colour = factor(Dist.time))) +
+        geom_pointrange(aes(ymin = `0.025quant`, ymax = `0.975quant`, shape = "INLA"), position = position_dodge(width = 0.5)) +
+        geom_pointrange(data = data_summ, aes(y = Mean, ymin = lower, ymax = upper, shape = "Raw"), position = position_nudge(x = 0.2)) +
+        geom_pointrange(data =  newdata, aes(y =  Pred, ymin = lower, ymax = upper, shape = "glmmTMB"), position = position_nudge(x = -0.2)) +
+        facet_wrap(A_SECTOR ~ SHELF, scales = "free")
+
+      
+      ## newdata_pred <- newdata_pred |>
+      ##   mutate(Dist = case_when(
+      ##     s == 1 ~ "s",
+      ##     c == 1 ~ "c",
+      ##     d == 1 ~ "d",
+      ##     b == 1 ~ "b",
+      ##     u == 1 ~ "u"
+      ##   ))
+      ## newdata_pred <- newdata_pred |>
+      ##   separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE)
+      ## ## newdata_before <- data.frame(Dist = unique(newdata_pred$Dist)) |>
+      ## ##   crossing(
+      ## ##     A_SECTOR = newdata_pred$A_SECTOR,
+      ## ##     SHELF = newdata_pred$SHELF
+      ## ##   ) |>
+      ## ##   bind_cols(newdata_pred |> filter(Dist.time == "Before") |> dplyr::select(-SecShelf, -A_SECTOR, -SHELF, -s, -c, -d, -b, -u, -Dist))
+      
+      ##   newdata_pred |>
+      ##           ## bind_rows(newdata_before) |> 
+      ##         separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |> 
+      ##         ggplot(aes(y = `0.5quant`, x = factor(Dist), color = Dist.time)) +
+      ##         geom_pointrange(
+      ##                 aes(
+      ##                         ymin = `0.025quant`,
+      ##                         ymax = `0.975quant`
+      ##                 ),
+      ##                 position = position_dodge(width = 0.5)
+      ##         ) +
+      ## facet_grid(A_SECTOR ~ SHELF)
     }
-    ## Contrasts
+    ## Partial plots - version 2
     {
-      nd.pred <- nd1 |>
-        bind_cols(mod$summary.lincomb.derived) |>
-        mutate(across(where(is.numeric), exp))
-      nd.pred |> ggplot(aes(x = `0.5quant`, y = Dist)) +
-        geom_vline(xintercept = 1, linetype = "dashed") +
-        geom_pointrange(aes(xmin = `0.025quant`, xmax = `0.975quant`)) +
-        scale_x_continuous("Effect (Before - After) on a fold scale",
-          trans = "log2", breaks = scales::extended_breaks(n = 8)
+      draws <- inla.posterior.sample(n=1000, result = mod)
+      cellmeans <- newdata |>
+        mutate(Dist = case_when(
+          s == 1 ~ "s",
+          c == 1 ~ "c",
+          d == 1 ~ "d",
+          b == 1 ~ "b",
+          u == 1 ~ "u",
+          .default = "Before"
+        )) |>
+        separate(SecShelf, into = c("A_SECTOR", "SHELF"), sep = " ") |> 
+        bind_cols(sapply(draws, function(x) x$latent[i_newdata]))
+
+      cellmeans <- cellmeans |>
+              pivot_longer(cols = matches("^[\\.]{3}[0-9]*"), names_to = ".draws") |>
+              dplyr::select(Dist.time, A_SECTOR, SHELF, Dist, .draws, value) |>
+              posterior::as_draws() |>
+              mutate(.draw = .draws) |>
+        mutate(value = plogis(value)) |> 
+        dplyr::select(-.draws)
+      cellmeans_summ <- cellmeans |> 
+        group_by(Dist.time, A_SECTOR, SHELF, Dist) |>
+        summarise_draws(median, HDInterval::hdi)
+
+      cellmeans_summ |>
+        ggplot(aes(y = median, x = Dist, colour = factor(Dist.time))) +
+        geom_pointrange(aes(ymin = lower, ymax = upper),
+          position = position_dodge(width = 0.5)) +
+        facet_grid(A_SECTOR ~ SHELF, scales = "free")
+    }
+    ## Contrasts - version 2
+    {
+      eff <-
+              cellmeans |>
+        ## filter(.draw == "...14", A_SECTOR == "CA", SHELF == "I") |>
+              nest(.by = c(A_SECTOR, SHELF, .draw)) |>
+              mutate(data1 = map(
+                      .x = data,
+                      .f = ~ {
+                              .x <- .x |>
+                                      mutate(Dist = factor(Dist,
+                                              levels = c("Before", "s", "c", "d", "b", "u")
+                                      )) |>
+                                      arrange(Dist)
+                              xmat <- cbind(-1, 1 * contr.treatment(6, base = 1, contrast = TRUE))
+                              xmat <- xmat[-1, ]
+                              ## print(.x)
+                              ## print(xmat)
+                              x <- log(as.vector(as.vector(.x$value)))
+                              ## print(x)
+                              ## print(as.vector(x %*% t(xmat)))
+                              ## print(exp(as.vector(x %*% t(xmat))))
+                              data.frame(
+                                      Dist = .x$Dist[-1],
+                                      Values = exp(as.vector(x %*% t(xmat)))
+                              )
+                      }, .progress = TRUE
+              ))
+
+      eff_summ <- eff |> dplyr::select(-data) |> 
+                unnest(c(data1)) |>
+                ungroup() |>
+                group_by(A_SECTOR, SHELF, Dist) |> 
+        posterior::summarise_draws(
+          median,
+          HDInterval::hdi,
+          Pl = ~ mean(.x < 1),
+          Pg = ~ mean(.x > 1)
         )
+
+
+      eff_summ |>
+        ggplot(aes(x = median, y = Dist)) +
+        geom_vline(xintercept = 1, linetype = "dashed") +
+        geom_pointrange(aes(xmin = lower, xmax = upper)) +
+        scale_x_continuous("Effect (Before - After) on a fold scale",
+          trans = "log2",
+          breaks = c(0.5, 1, 2)
+          ## breaks = scales::log_breaks(n = 8, base = 2)
+          ## breaks = scales::pretty_breaks(n = 8)
+          ## breaks = scales::extended_breaks(n = 8)
+        ) +
+        facet_grid(A_SECTOR ~ SHELF, scales = "free")
     }
   }
 }
