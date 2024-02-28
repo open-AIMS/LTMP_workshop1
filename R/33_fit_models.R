@@ -914,6 +914,98 @@ data <- full_data
 
 ## Disturbances (full zi RE)
 {
+  ## Prepare data
+  {
+    data <- full_data
+
+    ## Focus on only the necessary variables
+    data <- data |>
+      dplyr::select(
+        n.points, total.points, Dist.time, s, c, d, b, u,
+        AIMS_REEF_NAME, Site, Transect, Dist.number
+      ) |>
+      mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x))) 
+  }
+  ## glmmTMB
+  {
+    ## Fit model
+    {
+      library(glmmTMB)
+      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ Dist.time*(s+c+d+b+u) +
+                               (1|AIMS_REEF_NAME) +
+                               (1|Site) +
+                               (1|Transect),
+        ziformula = ~ 1 + (1|AIMS_REEF_NAME) + (1|Site) + (1|Transect),
+        data = data,
+        family = "binomial", 
+        REML = TRUE
+      )
+
+      summary(mod_glmmTMB)
+    }
+    ## DHARMa
+    {
+      resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
+      wrap_elements(~testUniformity(resids)) +
+        wrap_elements(~plotResiduals(resids)) +
+        wrap_elements(~testDispersion(resids)) 
+      testDispersion(resids)
+      testZeroInflation(resids)
+    }
+    ## Partial plots
+    {
+      mod_glmmTMB |>
+        emmeans(~ c, type = "response") |>
+        as.data.frame() |>
+        separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |> 
+        ggplot(aes(y = prob, x = A_SECTOR, colour = Dist.time)) +
+        geom_pointrange(aes(ymin = asymp.LCL, ymax = asymp.UCL), position = position_dodge(width = 0.5)) +
+        facet_grid(~SHELF)
+    }
+    ## Contrasts
+    {
+      mod_glmmTMB |>
+              emmeans(~ Dist.time | SecShelf, type = "response") |>
+              contrast(method = list(Dist.time = c(-1, 1))) |>
+              summary(infer = TRUE) |>
+              as.data.frame() |>
+              separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |>
+              ggplot(aes(x = odds.ratio, y = A_SECTOR)) +
+              geom_vline(xintercept = 1, linetype = "dashed") +
+              geom_pointrange(aes(xmin = asymp.LCL, xmax = asymp.UCL)) +
+        scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8)) +
+        facet_grid(~SHELF)
+    }
+  }
+  ## brms
+  {
+    form <- bf(
+            n.points | trials(total.points) ~ Dist.time*(s+c+d+b+u) +
+                    (1 | AIMS_REEF_NAME) +
+                    (1 | Site) +
+                    (1 | Transect),
+            zi = ~ 1 + (1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
+            family = "zero_inflated_binomial"
+    )
+    priors <- prior(normal(0, 1), class = "Intercept") +
+            prior(normal(0, 1), class = "b") +
+            prior(student_t(3, 0, 1), class = "sd") +
+            prior(logistic(0, 1), class = "Intercept", dpar = "zi")
+    mod_brm <- brm(form,
+      data = data,
+      prior = priors,
+      iter = 5000, warmup = 1000,
+      chains = 3, cores = 3,
+      thin = 4,
+      backend = "cmdstanr",
+      control = list(adapt_delta = 0.99),
+      silent =  0#,
+      ## refresh = 100
+    )
+    summary(mod_brm)
+    save(mod_brm, file = "../data/modelled/mod_brm_5.1.RData")
+    load(file = "../data/modelled/mod_brm_5.1.RData")
+  }
   ## INLA
   {
     ## Prepare data
@@ -1144,86 +1236,6 @@ data <- full_data
               )
 
     }
-  }
-  ## glmmTMB
-  {
-    ## Fit model
-    {
-      library(glmmTMB)
-      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ Dist.time*(s+c+d+b+u) +
-                               (1|AIMS_REEF_NAME) +
-                               (1|Site) +
-                               (1|Transect),
-        ziformula = ~ 1 + (1|AIMS_REEF_NAME) + (1|Site) + (1|Transect),
-        data = data,
-        family = "binomial", 
-        REML = TRUE
-      )
-
-      summary(mod_glmmTMB)
-    }
-    ## DHARMa
-    {
-      resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
-      wrap_elements(~testUniformity(resids)) +
-        wrap_elements(~plotResiduals(resids)) +
-        wrap_elements(~testDispersion(resids)) 
-      testDispersion(resids)
-      testZeroInflation(resids)
-    }
-    ## Partial plots
-    {
-      mod_glmmTMB |>
-        emmeans(~ c, type = "response") |>
-        as.data.frame() |>
-        separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |> 
-        ggplot(aes(y = prob, x = A_SECTOR, colour = Dist.time)) +
-        geom_pointrange(aes(ymin = asymp.LCL, ymax = asymp.UCL), position = position_dodge(width = 0.5)) +
-        facet_grid(~SHELF)
-    }
-    ## Contrasts
-    {
-      mod_glmmTMB |>
-              emmeans(~ Dist.time | SecShelf, type = "response") |>
-              contrast(method = list(Dist.time = c(-1, 1))) |>
-              summary(infer = TRUE) |>
-              as.data.frame() |>
-              separate(SecShelf, into = c("A_SECTOR", "SHELF"), remove = FALSE) |>
-              ggplot(aes(x = odds.ratio, y = A_SECTOR)) +
-              geom_vline(xintercept = 1, linetype = "dashed") +
-              geom_pointrange(aes(xmin = asymp.LCL, xmax = asymp.UCL)) +
-        scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8)) +
-        facet_grid(~SHELF)
-    }
-  }
-  ## brms
-  {
-    form <- bf(
-            n.points | trials(total.points) ~ Dist.time*(s+c+d+b+u) +
-                    (1 | AIMS_REEF_NAME) +
-                    (1 | Site) +
-                    (1 | Transect),
-            zi = ~ 1 + (1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
-            family = "zero_inflated_binomial"
-    )
-    priors <- prior(normal(0, 1), class = "Intercept") +
-            prior(normal(0, 1), class = "b") +
-            prior(student_t(3, 0, 1), class = "sd") +
-            prior(logistic(0, 1), class = "Intercept", dpar = "zi")
-    mod_brm <- brm(form,
-      data = data,
-      prior = priors,
-      iter = 5000, warmup = 1000,
-      chains = 3, cores = 3,
-      thin = 4,
-      backend = "cmdstanr",
-      control = list(adapt_delta = 0.99),
-      silent =  0#,
-      ## refresh = 100
-    )
-    summary(mod_brm)
-    save(mod_brm, file = "../data/modelled/mod_brm_4.1.RData")
-    load(file = "../data/modelled/mod_brm_4.1.RData")
   }
 }
 
