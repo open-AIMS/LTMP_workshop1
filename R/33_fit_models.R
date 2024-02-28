@@ -26,44 +26,79 @@ data <- full_data
 
 ## Start with an intercept only model
 {
+  ## Raw means
+  {
+    cellmeans_summ_raw <- data |>
+      reframe(
+        type = c("mean", "median"),
+        Mean = c(mean(n.points / total.points), median(n.points / total.points)),
+        SD = c(sd(n.points / total.points), MAD = mad(n.points / total.points)),
+        N = c(n(), n())
+      ) |>
+      mutate(
+        lower = Mean - 2 * (SD / sqrt(N)),
+        upper = Mean + 2 * (SD / sqrt(N))
+      )
+    save(cellmeans_summ_raw, file = "../data/modelled/cellmeans_summ_raw_1.1.RData")
+  }
   ## glmmTMB
   {
-    
-    mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1 +
-                             (1|AIMS_REEF_NAME) +
-                             (1|Site) +
-                             (1|Transect),
-      data = data,
-      family = "binomial", 
-      REML = TRUE
-    )
+    ## fit model
+    {
+      mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1 +
+                               (1|AIMS_REEF_NAME) +
+                               (1|Site) +
+                               (1|Transect),
+        data = data,
+        family = "binomial", 
+        REML = TRUE
+      )
 
-    summary(mod_glmmTMB)
-    resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
-    testDispersion(resids)
-    testZeroInflation(resids)
-    save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_1.1.RData")
+      summary(mod_glmmTMB)
+      resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
+      testDispersion(resids)
+      testZeroInflation(resids)
+      save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_1.1.RData")
+      load(file = "../data/modelled/mod_glmmTMB_1.1.RData")
+    }
+    ## Partial effects
+    {
+      cellmeans_summ_glmmTMB <- mod_glmmTMB |>
+        emmeans(~1, type = "response") |>
+        as.data.frame()
+      save(cellmeans_summ_glmmTMB, file = "../data/modelled/cellmeans_summ_glmmTMB_1.1.RData")
+    }
   }
   ## brms
   {
-    mod_brm <- brm(
-      bf(
-        n.points | trials(total.points) ~ 1 +
-          (1 | AIMS_REEF_NAME) +
-          (1 | Site) +
-          (1 | Transect),
-        family = "binomial"
-      ),
-      data = data,
-      iter = 5000, warmup = 1000,
-      chains = 3, cores = 3,
-      thin = 4,
-      backend = "cmdstanr",
-      control = list(adapt_delta = 0.99)
-    )
-    summary(mod_brm)
-    save(mod_brm, file = "../data/modelled/mod_brm_1.1.RData")
-    load(file = "../data/modelled/mod_brm_1.1.RData")
+    ## fit model
+    {
+      mod_brm <- brm(
+        bf(
+          n.points | trials(total.points) ~ 1 +
+            (1 | AIMS_REEF_NAME) +
+            (1 | Site) +
+            (1 | Transect),
+          family = "binomial"
+        ),
+        data = data,
+        iter = 5000, warmup = 1000,
+        chains = 3, cores = 3,
+        thin = 4,
+        backend = "cmdstanr",
+        control = list(adapt_delta = 0.99)
+      )
+      summary(mod_brm)
+      save(mod_brm, file = "../data/modelled/mod_brm_1.1.RData")
+    }
+    ## Partial effects
+    {
+      load(file = "../data/modelled/mod_brm_1.1.RData")
+      cellmeans_summ_brm <- mod_brm |>
+        emmeans(~1, type = "response") |>
+        as.data.frame()
+      save(cellmeans_summ_brm, file = "../data/modelled/cellmeans_summ_brm_1.1.RData")
+    }
   }
   ## INLA
   {
@@ -74,6 +109,9 @@ data <- full_data
           n.points, total.points, AIMS_REEF_NAME,
           Site, Transect
         )
+      newdata <- data.frame(AIMS_REEF_NAME = NA, Site = NA, Transect = NA)
+      data_pred <- data |> bind_rows(newdata)
+      i_newdata <- (nrow(data) + 1):nrow(data_pred) 
       mod <- inla(n.points ~ 1 +
                     f(model = "iid", AIMS_REEF_NAME) +
                     f(model = "iid", Site) +
@@ -86,8 +124,10 @@ data <- full_data
           dic = TRUE, waic = TRUE, cpo = TRUE
         )
       )
-      ## summary(mod)
+      summary(mod)
       ## autoplot(mod)
+      save(mod, file = "../data/modelled/mod_1.1.RData")
+      load(file = "../data/modelled/mod_1.1.RData")
     }
 
     ## Diagnostics
@@ -145,8 +185,67 @@ data <- full_data
       testDispersion(mod_resids)
       testZeroInflation(mod_resids)
     }
+    ## Partial effects
+    {
+      load(file = "../data/modelled/mod_1.1.RData")
+      draws <- inla.posterior.sample(n=1000, result = mod)
+      contents <- mod$misc$configs$contents
+      i_newdata <- contents$start[contents$tag == "(Intercept)"]
+      cellmeans <- newdata |> bind_cols(sapply(draws, function(x) x$latent[i_newdata]))
+      cellmeans_summ_inla <- cellmeans |>
+        pivot_longer(cols = matches("^[\\.]{3}[0-9]*"), names_to = ".draws") |>
+        posterior::as_draws() |>
+        mutate(.draw = .draws) |>
+        dplyr::select(-.draws, -AIMS_REEF_NAME, -Site, -Transect) |>
+        mutate(value = plogis(value)) |> 
+        summarise_draws(median, HDInterval::hdi)
+
+      cellmeans_summ_inla |> ggplot(aes(y = median, x = Dist, colour = factor(Dist.time))) +
+        geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5)) +
+        facet_grid(A_SECTOR ~ SHELF, scales = "free")
+      
+      save(cellmeans_summ_inla, file = "../data/modelled/cellmeans_summ_inla_1.1.RData")
+    }
+  }
+
+  ## Comparisons
+  {
+    
+    load(file = "../data/modelled/cellmeans_summ_raw_1.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_glmmTMB_1.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_brm_1.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_inla_1.1.RData")
+
+    cellmeans_summ <- bind_rows(
+      cellmeans_summ_raw |>
+        mutate(method = "raw") |>
+        dplyr::rename(median = Mean, lower = lower, upper = upper),
+      cellmeans_summ_glmmTMB |>
+        mutate(method = "glmmTMB") |>
+        dplyr::rename(median = prob, lower = asymp.LCL, upper = asymp.UCL),
+      cellmeans_summ_brm |> mutate(method = "brm") |>
+        dplyr::rename(median = prob, lower = lower.HPD, upper = upper.HPD),
+      cellmeans_summ_inla |>
+        mutate(method = "inla") |> 
+        dplyr::rename(median = median, lower = lower, upper = upper)
+    )
+    cellmeans_summ
+
+    cellmeans_summ |> ggplot(aes(y = median, x = method)) +
+            geom_pointrange(aes(ymin = lower, ymax = upper))
+
   }
 }
+
+
+
+
+
+
+
+
+
+
 
 ## Switch to zero-inflated model (intercept only)
 {
@@ -1446,7 +1545,7 @@ data <- full_data
         (1 | AIMS_REEF_NAME) +
         (1 | Site) +
         (1 | Transect),
-      zi = ~ 1 + (1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
+      zi = ~ 1 +,
       family = "zero_inflated_binomial"
     )
     priors <- prior(normal(0, 1), class = "Intercept") +
@@ -1804,6 +1903,11 @@ data <- full_data
   }
 }
 
+
+
+#####
+
+
 ## SecShelf, Dist.time and Disturbances (zi full RE) 
 {
   ## Prepare data
@@ -1957,6 +2061,36 @@ cellmeans <- cellmeans |>
   contents <- mod$misc$configs$contents
       preds <- posterior_predict.inla(mod, newdata = data_pred[i_newdata, ])
     }
+  }
+  ## brms
+  {
+    form <- bf(
+      n.points | trials(total.points) ~ 1+ (s + c + d + b + u) + 
+        (1 | Dist.time:SecShelf:(s + c + d + b + u)) +
+        (1 | AIMS_REEF_NAME) +
+        (1 | Site) +
+        (1 | Transect),
+      zi = ~ 1 + (1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
+      family = "zero_inflated_binomial"
+    )
+    priors <- prior(normal(0, 1), class = "Intercept") +
+            prior(normal(0, 1), class = "b") +
+            prior(student_t(3, 0, 1), class = "sd") +
+            prior(logistic(0, 1), class = "Intercept", dpar = "zi")
+    mod_brm <- brm(form,
+      data = data,
+      prior = priors,
+      iter = 5000, warmup = 1000,
+      chains = 3, cores = 3,
+      thin = 4,
+      backend = "cmdstanr",
+      control = list(adapt_delta = 0.99),
+      silent =  0#,
+      ## refresh = 100
+    )
+    summary(mod_brm)
+    save(mod_brm, file = "../data/modelled/mod_brm_7.1.RData")
+    load(file = "../data/modelled/mod_brm_7.1.RData")
   }
   ## INLA
   {
