@@ -573,6 +573,58 @@ data <- full_data
 
 ## Add Before/After
 {
+  ## Data preparation
+  {
+    data <- full_data
+  }
+  ## Raw means
+  {
+    cellmeans_summ_raw <- data |>
+      group_by(Dist.time) |> 
+      reframe(
+        type = c("mean", "median"),
+        Mean = c(mean(n.points / total.points), median(n.points / total.points)),
+        SD = c(sd(n.points / total.points), MAD = mad(n.points / total.points)),
+        N = c(n(), n())
+      ) |>
+      mutate(
+        lower = Mean - 2 * (SD / sqrt(N)),
+        upper = Mean + 2 * (SD / sqrt(N))
+      )
+    save(cellmeans_summ_raw, file = "../data/modelled/cellmeans_summ_raw_2.1.RData")
+
+    eff_summ_raw <- cellmeans_summ_raw |>
+            group_by(type) |>
+            summarise(Mean = Mean[Dist.time == "After"] / Mean[Dist.time == "Before"])
+    save(eff_summ_raw, file = "../data/modelled/eff_summ_raw_2.1.RData")
+    
+    eff_summ_raw <-
+      data |>
+      ## filter(Transect == "Feather Reef 1 5", Dist.number == 2) |> 
+      mutate(cover = n.points / total.points) |> 
+      dplyr::select(Dist.time, AIMS_REEF_NAME, Site, Transect, Dist.number,
+        s, c, d, b, u, cover) |> 
+      mutate(Dist = case_when(s == 1 ~ "s",
+        c == 1 ~ "c",
+        d == 1 ~ "d",
+        b == 1 ~ "b",
+        u == 1 ~ "u")) |>
+      dplyr::select(-any_of(c("s", "c", "d", "b", "u"))) |>
+      group_by(AIMS_REEF_NAME, Site, Transect, Dist.number, Dist) |>
+      reframe(Value = mean(cover[Dist.time == "After"]) - mean(cover[Dist.time == "Before"])) |> 
+    ungroup() |> 
+      reframe(
+        type = c("mean", "median"),
+        Mean = c(mean(Value, na.rm = TRUE), median(Value, na.rm = TRUE)),
+        SD = c(sd(Value, na.rm = TRUE), MAD = mad(Value, na.rm = TRUE)),
+        N = c(n(), n())
+      ) |>
+      mutate(
+        lower = Mean - 2 * (SD / sqrt(N)),
+        upper = Mean + 2 * (SD / sqrt(N))
+      )
+    save(eff_summ_raw, file = "../data/modelled/eff_summ_raw_2.1a.RData")
+  }
   ## glmmTMB
   {
     ## Fit model
@@ -588,7 +640,7 @@ data <- full_data
       )
 
       summary(mod_glmmTMB)
-    save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_2.1.RData")
+      save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_2.1.RData")
     }
     ## DHARMa
     {
@@ -601,53 +653,98 @@ data <- full_data
     }
     ## Partial plots
     {
-      mod_glmmTMB |>
+      load(file = "../data/modelled/mod_glmmTMB_2.1.RData")
+      cellmeans_summ_glmmTMB <- mod_glmmTMB |>
         emmeans(~Dist.time, type = "response") |>
-        as.data.frame() |> 
+        as.data.frame()
+      save(cellmeans_summ_glmmTMB, file = "../data/modelled/cellmeans_summ_glmmTMB_2.1.RData")
+
+      cellmeans_summ_glmmTMB |>
         ggplot(aes(y = prob, x = Dist.time)) +
         geom_pointrange(aes(ymin = asymp.LCL, ymax = asymp.UCL))
     }
     ## Contrasts
     {
-      mod_glmmTMB |>
-              emmeans(~Dist.time, type = "response") |>
-              contrast(method = list(Dist.time = c(-1, 1))) |>
-              summary(infer = TRUE) |> 
-        as.data.frame() |> 
+      load(file = "../data/modelled/mod_glmmTMB_2.1.RData")
+      eff_summ_glmmTMB <-
+        mod_glmmTMB |>
+        emmeans(~Dist.time, type = "response") |>
+        contrast(method = list(Dist.time = c(-1, 1))) |>
+        summary(infer = TRUE) |>
+        as.data.frame()
+      save(eff_summ_glmmTMB, file = "../data/modelled/eff_summ_glmmTMB_2.1.RData")
+
+      eff_summ_glmmTMB |>
         ggplot(aes(x = odds.ratio, y = contrast)) +
-              geom_vline(xintercept = 1, linetype = "dashed") +
+        geom_vline(xintercept = 1, linetype = "dashed") +
         geom_pointrange(aes(xmin = asymp.LCL, xmax = asymp.UCL)) +
-        scale_x_continuous("Effect (Before - After) on a fold scale", trans = "log2", breaks = scales::extended_breaks(n = 8))
+        scale_x_continuous("Effect (Before - After) on a fold scale",
+          trans = "log2", breaks = scales::extended_breaks(n = 8)
+        )
     }
   }
   ## brms
   {
-    form <- bf(
-            n.points | trials(total.points) ~ Dist.time +
-                    (1 | AIMS_REEF_NAME) +
-                    (1 | Site) +
-                    (1 | Transect),
-            zi = ~ 1 + (1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
-            family = "zero_inflated_binomial"
-    )
-    priors <- prior(normal(0, 1), class = "Intercept") +
-            prior(normal(0, 1), class = "b") +
-            prior(student_t(3, 0, 1), class = "sd") +
-            prior(logistic(0, 1), class = "Intercept", dpar = "zi")
-    mod_brm <- brm(form,
-      data = data,
-      prior = priors,
-      iter = 5000, warmup = 1000,
-      chains = 3, cores = 3,
-      thin = 4,
-      backend = "cmdstanr",
-      control = list(adapt_delta = 0.99),
-      silent =  0#,
-      ## refresh = 100
-    )
-    summary(mod_brm)
-    save(mod_brm, file = "../data/modelled/mod_brm_2.1.RData")
-    load(file = "../data/modelled/mod_brm_2.1.RData")
+    ## Fit model
+    {
+      form <- bf(
+        n.points | trials(total.points) ~ Dist.time +
+          (1 | AIMS_REEF_NAME) +
+          (1 | Site) +
+          (1 | Transect),
+        zi = ~ 1 + (1 | AIMS_REEF_NAME) + (1 | Site) + (1 | Transect),
+        family = "zero_inflated_binomial"
+      )
+      priors <- prior(normal(0, 1), class = "Intercept") +
+        prior(normal(0, 1), class = "b") +
+        prior(student_t(3, 0, 1), class = "sd") +
+        prior(logistic(0, 1), class = "Intercept", dpar = "zi")
+      mod_brm <- brm(form,
+        data = data,
+        prior = priors,
+        iter = 5000, warmup = 1000,
+        chains = 3, cores = 3,
+        thin = 4,
+        backend = "cmdstanr",
+        control = list(adapt_delta = 0.99),
+        silent =  0#,
+        ## refresh = 100
+      )
+      summary(mod_brm)
+      save(mod_brm, file = "../data/modelled/mod_brm_2.1.RData")
+      load(file = "../data/modelled/mod_brm_2.1.RData")
+    }
+    ## Partial plots
+    {
+      load(file = "../data/modelled/mod_brm_2.1.RData")
+      cellmeans_summ_brm <- mod_brm |>
+        emmeans(~Dist.time, type = "response") |>
+        as.data.frame()
+      save(cellmeans_summ_brm, file = "../data/modelled/cellmeans_summ_brm_2.1.RData")
+
+      cellmeans_summ_brm |>
+        ggplot(aes(y = prob, x = Dist.time)) +
+        geom_pointrange(aes(ymin = lower.HPD, ymax = upper.HPD))
+    }
+    ## Contrasts
+    {
+      load(file = "../data/modelled/mod_brm_2.1.RData")
+      eff_summ_brm <-
+        mod_brm |>
+        emmeans(~Dist.time, type = "response") |>
+        contrast(method = list(Dist.time = c(-1, 1))) |>
+        summary(infer = TRUE) |>
+        as.data.frame()
+      save(eff_summ_brm, file = "../data/modelled/eff_summ_brm_2.1.RData")
+
+      eff_summ_brm |>
+        ggplot(aes(x = odds.ratio, y = contrast)) +
+        geom_vline(xintercept = 1, linetype = "dashed") +
+        geom_pointrange(aes(xmin = lower.HPD, xmax = upper.HPD)) +
+        scale_x_continuous("Effect (Before - After) on a fold scale",
+          trans = "log2", breaks = scales::extended_breaks(n = 8)
+        )
+    }
   }
   ## INLA
   {
@@ -690,6 +787,7 @@ data <- full_data
       )
       ## summary(mod)
       ## autoplot(mod)
+      save(mod, file = "../data/modelled/mod_2.1.RData")
     }
 
     ## Diagnostics
@@ -752,11 +850,12 @@ data <- full_data
     }
     ## Partial plots - version 1
     {
-      newdata_pred <- newdata |>
+      cellmeans_summ_inla <- newdata |>
         bind_cols(mod$summary.fitted.values[i_newdata, ])
       newdata_pred 
+      save(cellmeans_summ_inla, file = "../data/modelled/cellmeans_summ_inla_2.1.RData")
 
-      newdata_pred |> ggplot(aes(y = `0.5quant`, x = Dist.time)) +
+      cellmeans_summ_inla |> ggplot(aes(y = `0.5quant`, x = Dist.time)) +
         geom_pointrange(aes(ymin = `0.025quant`, ymax = `0.975quant`))
     }
     ## Partial plots - version 2
@@ -773,6 +872,28 @@ data <- full_data
         ggplot(aes(y = median, x = Dist.time)) +
         geom_pointrange(aes(ymin = lower, ymax = upper))
     }
+    ## Partial effects - version 3
+    {
+      load(file = "../data/modelled/mod_2.1.RData")
+      draws <- inla.posterior.sample(n = 1000, result = mod)
+      contents <- mod$misc$configs$contents
+      cellmeans <- newdata |> bind_cols(sapply(draws, function(x) x$latent[i_newdata]))
+      cellmeans_inla <- cellmeans |>
+              pivot_longer(cols = matches("^[\\.]{3}[0-9]*"), names_to = ".draws") |>
+              posterior::as_draws() |>
+              mutate(.draw = .draws) |>
+              dplyr::select(-.draws) |>
+        mutate(value = plogis(value))
+      cellmeans_summ_inla <- cellmeans_inla |> 
+        group_by(Dist.time) |> 
+        summarise_draws(median, HDInterval::hdi)
+
+      cellmeans_summ_inla |> ggplot(aes(y = median, x = 1)) +
+        geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5))
+
+      save(cellmeans_summ_inla, file = "../data/modelled/cellmeans_summ_inla_2.1.RData")
+    }
+
     ## Contrasts - version 1
     {
       nd_pred <- 
@@ -805,6 +926,77 @@ data <- full_data
           trans = "log2", breaks = scales::extended_breaks(n = 8)
         )
     }
+    ## Contrasts - version 3
+    {
+      
+      eff_inla <- cellmeans_inla |>
+        group_by(.draw) |>
+        summarise(value = exp(log(value[Dist.time == "After"]) - log(value[Dist.time == "Before"])))
+      eff_summ_inla <- eff_inla |> 
+        ungroup() |> 
+        summarise_draws(median, HDInterval::hdi)
+
+      eff_summ_inla |> ggplot(aes(x = median, y = 1)) +
+        geom_vline(xintercept = 1, linetype = "dashed") +
+        geom_pointrange(aes(xmin = lower, xmax = upper), position = position_dodge(width = 0.5))
+
+      save(eff_summ_inla, file = "../data/modelled/eff_summ_inla_2.1.RData")
+    }
+  }
+  ## Comparisons
+  {
+    
+    load(file = "../data/modelled/cellmeans_summ_raw_2.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_glmmTMB_2.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_brm_2.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_inla_2.1.RData")
+
+    cellmeans_summ <- bind_rows(
+      cellmeans_summ_raw |>
+        mutate(method = "raw") |>
+        dplyr::rename(median = Mean, lower = lower, upper = upper),
+      cellmeans_summ_glmmTMB |>
+        mutate(method = "glmmTMB") |>
+        dplyr::rename(median = prob, lower = asymp.LCL, upper = asymp.UCL),
+      cellmeans_summ_brm |> mutate(method = "brm") |>
+        dplyr::rename(median = prob, lower = lower.HPD, upper = upper.HPD),
+      cellmeans_summ_inla |>
+        mutate(method = "inla") |> 
+        dplyr::rename(median = median, lower = lower, upper = upper)
+    )
+    cellmeans_summ
+
+    cellmeans_summ |> ggplot(aes(y = median, x = method, colour = Dist.time)) +
+            geom_pointrange(aes(ymin = lower, ymax = upper))
+
+    load(file = "../data/modelled/eff_summ_raw_2.1.RData")
+    load(file = "../data/modelled/eff_summ_glmmTMB_2.1.RData")
+    load(file = "../data/modelled/eff_summ_brm_2.1.RData")
+    load(file = "../data/modelled/eff_summ_inla_2.1.RData")
+
+    eff_summ <- bind_rows(
+      eff_summ_raw |>
+        mutate(method = "raw") |>
+        dplyr::rename(median = Mean),
+      eff_summ_glmmTMB |>
+        mutate(method = "glmmTMB") |>
+        dplyr::rename(median = odds.ratio, lower = asymp.LCL, upper = asymp.UCL),
+      eff_summ_brm |>
+        mutate(method = "brm") |>
+        dplyr::rename(median = odds.ratio, lower = lower.HPD, upper = upper.HPD),
+      eff_summ_inla |>
+        mutate(method = "inla") |> 
+        dplyr::rename(median = median, lower = lower, upper = upper)
+    )
+    eff_summ
+
+    eff_summ |>
+      ggplot(aes(x = median, y = method)) +
+        geom_vline(xintercept = 1, linetype = "dashed") +
+        geom_pointrange(aes(xmin = lower, xmax = upper)) +
+        scale_x_continuous("Effect (Before - After) on a fold scale",
+          trans = "log2", breaks = scales::extended_breaks(n = 8)
+        )
   }
 }
 
