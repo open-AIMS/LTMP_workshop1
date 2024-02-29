@@ -411,3 +411,33 @@ pp_check.foo <- function(object, type = c("multiple", "overlaid"), ...) {
   }
 }
 ## ----end
+
+
+## Take a data.frame that has values for each Dist and calculate the
+## fold difference between Before and each of the others. Example of
+## the data frame follows
+
+## # A tibble: 12 × 8
+##     Dist.time Dist   Values
+##     <fct>     <chr>     <dbl>
+##   1 Before    Before 0.00730
+##   3 After     b      0.000938
+##   5 After     c      0.00209
+##   7 After     d      0.00283
+##   9 After     s      0.00271
+##  11 After     u      0.00607
+
+before_vs_afters <- function(.x) {
+  .x <- .x |>
+    mutate(Dist = factor(Dist,
+      levels = c("Before", "s", "c", "d", "b", "u")
+    )) |>
+    arrange(Dist)
+  xmat <- cbind(-1, 1 * contr.treatment(6, base = 1, contrast = TRUE))
+  xmat <- xmat[-1, ]
+  x <- log(as.vector(as.vector(.x$Values)))
+  data.frame(
+    Dist = .x$Dist[-1],
+    Values = exp(as.vector(x %*% t(xmat)))
+  )
+}
