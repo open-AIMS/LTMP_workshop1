@@ -262,6 +262,8 @@ data <- full_data
         ), Dist = factor(Dist, levels = c("Before", "s", "c", "d", "b", "u"))) |>
         arrange(Dist) |> 
         dplyr::select(-any_of(c("s", "c", "d", "b", "u")))
+      Xmat <- cbind(1, contr.treatment(6, contrasts = TRUE))
+
       fit <- mod_brm |>
         as.data.frame() |>
         dplyr::select(matches("^b_[^z].*", perl = TRUE))

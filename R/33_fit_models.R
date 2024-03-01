@@ -21,6 +21,9 @@ source("33_fit_models_4.1.R")
 ## Model 5.1  logit(P()) = β₀ + β₁*Dist.time + γ₀ᵢ + γ₁ⱼ + γ₂ₖ, logit(P()) = α₀ + γ₀ᵢᵣ + γ₁ⱼᵣ + γ₂ₖᵣ  (Zero-inflated Binomial)
 source("33_fit_models_5.1.R")
 
+## Model 6.1  logit(P()) = β₀ +  γₐᵢ + γ₀ᵢ + γ₁ⱼ + γ₂ₖ, logit(P()) = α₀ (Zero-inflated Binomial)
+source("33_fit_models_6.1.R")
+
 ## data <- data |>
 ##   dplyr::select(n.points, total.points, A_SECTOR, SHELF, SecShelf,
 ##     AIMS_REEF_NAME, Site, Transect, Dist.time)

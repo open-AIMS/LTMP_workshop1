@@ -51,7 +51,7 @@ data <- full_data
           lower = Mean - 2 * (SD / sqrt(N)),
           upper = Mean + 2 * (SD / sqrt(N))
         )
-      save(cellmeans_summ_raw, file = "../data/modelled/cellmeans_summ_raw_5.1.RData")
+      save(cellmeans_summ_raw, file = "../data/modelled/cellmeans_summ_raw_6.1.RData")
     }
     ## Effects
     {
@@ -64,7 +64,7 @@ data <- full_data
         )) |>
         dplyr::select(-data) |> 
         unnest(c(eff))
-      save(eff_summ_raw, file = "../data/modelled/eff_summ_raw_5.1.RData")
+      save(eff_summ_raw, file = "../data/modelled/eff_summ_raw_6.1.RData")
     }
   }
   ## glmmTMB
@@ -72,7 +72,8 @@ data <- full_data
     ## Fit model
     {
       if (rerun) {
-        mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ s+c+d+b+u +
+        mod_glmmTMB <- glmmTMB(cbind(n.points, total.points-n.points) ~ 1 +
+                                 (1 | (s + c + d + b + u)) +
                                  (1|AIMS_REEF_NAME) +
                                  (1|Site) +
                                  (1|Transect),
@@ -83,12 +84,12 @@ data <- full_data
         )
 
         summary(mod_glmmTMB)
-        save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_5.1.RData")
+        save(mod_glmmTMB, file = "../data/modelled/mod_glmmTMB_6.1.RData")
       }
     }
     ## DHARMa
     {
-      load(file = "../data/modelled/mod_glmmTMB_5.1.RData")
+      load(file = "../data/modelled/mod_glmmTMB_6.1.RData")
       resids <- simulateResiduals(mod_glmmTMB, plot = TRUE)
       wrap_elements(~testUniformity(resids)) +
         wrap_elements(~plotResiduals(resids)) +
@@ -98,7 +99,7 @@ data <- full_data
     }
     ## Partial plots
     {
-      load(file = "../data/modelled/mod_glmmTMB_5.1.RData")
+      load(file = "../data/modelled/mod_glmmTMB_6.1.RData")
 
       newdata <- crossing(s = c(0,1), c = c(0, 1), d = c(0, 1),  b = c(0, 1), u = c(0, 1)) |>
         filter((s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
@@ -116,53 +117,8 @@ data <- full_data
                 u == 1 ~ "u",
                 .default = "Before"
         ), Dist = factor(Dist, levels = c("Before", "s", "c", "d", "b", "u"))) |>
-        arrange(Dist) |> 
-        dplyr::select(-any_of(c("s", "c", "d", "b", "u")))
-      Xmat <- cbind(1, contr.treatment(6, contrasts = TRUE))
-      cellmeans <- emmobj(
-        fixef(mod_glmmTMB)[[1]],
-        vcov(mod_glmmTMB)[[1]],
-        levels = 1:6,
-        linfct = Xmat
-      ) |>
-        as.data.frame() |>
-        mutate(across(c(estimate, asymp.LCL, asymp.UCL), plogis))
-
-      cellmeans_summ_glmmTMB <- newdata |> bind_cols(cellmeans)
-      save(cellmeans_summ_glmmTMB, file = "../data/modelled/cellmeans_summ_glmmTMB_5.1.RData")
-    }
-    ## Contrasts
-    {
-      XXmat <- cbind(0, contr.treatment(6))[-1, ]
-      eff <- emmobj(
-        bhat = fixef(mod_glmmTMB)[[1]],
-        V = vcov(mod_glmmTMB)[[1]],
-        levels = 2:6,
-        linfct = XXmat
-      ) |> 
-        as.data.frame() |>
-        mutate(across(c(estimate, asymp.LCL, asymp.UCL), exp))
-      eff_summ_glmmTMB <- newdata |>
-              filter(Dist != "Before") |>
-        droplevels() |>
-        bind_cols(eff)
-      save(eff_summ_glmmTMB, file = "../data/modelled/eff_summ_glmmTMB_5.1.RData")
-    }
-    ## Partial plots - old
-    {
-      if (1 == 2) {
-        load(file = "../data/modelled/mod_glmmTMB_5.1.RData")
-        newdata <- crossing(Dist.time = data$Dist.time) |>
-          crossing(s = c(0,1), d = c(0, 1), c = c(0, 1), b = c(0, 1), u = c(0, 1)) |>
-          mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA, Dist.number =  NA)
-        newdata <- newdata |>
-          filter((Dist.time == "Before" & s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
-                   (Dist.time == "After" & s == 1 & d == 0 & c == 0 & b == 0 & u == 0) |
-                   (Dist.time == "After" & s == 0 & d == 1 & c == 0 & b == 0 & u == 0) |
-                   (Dist.time == "After" & s == 0 & d == 0 & c == 1 & b == 0 & u == 0) |
-                   (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
-                   (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 0 & u == 1) 
-          )
+        arrange(Dist) |>
+        mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA)
 
         p <- predict(mod_glmmTMB, newdata = newdata, se.fit = TRUE)
         newdata <- newdata |>
@@ -178,19 +134,16 @@ data <- full_data
             .default = "Before"
           )) 
 
-        cellmeans_summ_glmmTMB <- newdata |> dplyr::select(Dist.time, Dist, Pred, lower, upper)
-        save(cellmeans_summ_glmmTMB, file = "../data/modelled/cellmeans_summ_glmmTMB_5.1.RData")
-      }
+        cellmeans_summ_glmmTMB <- newdata |> dplyr::select(Dist, Pred, lower, upper)
+        save(cellmeans_summ_glmmTMB, file = "../data/modelled/cellmeans_summ_glmmTMB_6.1.RData")
     }
-    ## Contrasts - old
+    ## Contrasts
     {
-      if (i == 2) {
-        eff_summ_glmmTMB <- 
-          cellmeans_summ_glmmTMB |>
-          mutate(Values = Pred) |> 
-          before_vs_afters()
-        save(eff_summ_glmmTMB, file = "../data/modelled/eff_summ_glmmTMB_5.1.RData")
-      }
+      eff_summ_glmmTMB <- 
+        cellmeans_summ_glmmTMB |>
+        mutate(Values = Pred) |> 
+        before_vs_afters()
+      save(eff_summ_glmmTMB, file = "../data/modelled/eff_summ_glmmTMB_6.1.RData")
     }
   }
   ## brms
@@ -199,7 +152,8 @@ data <- full_data
     {
       if (rerun) {
         form <- bf(
-          n.points | trials(total.points) ~ s + c + d + b + u +
+          n.points | trials(total.points) ~ 1 +
+            (1 | (s + c + d + b + u )) +
             (1 | AIMS_REEF_NAME) +
             (1 | Site) +
             (1 | Transect),
@@ -359,71 +313,69 @@ data <- full_data
           n.points, total.points, Dist.time, s, c, d, b, u,
           AIMS_REEF_NAME, Site, Transect, Dist.number
         ) |>
-        mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x))) 
-      ## Cellmeans
-      newdata <- data.frame(Dist.time = unique(data$Dist.time)) |>
-              crossing(s = data$s, c = data$c, d = data$d, b = data$b, u = data$u)
+        mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x)))
+      
+      ## ## Cellmeans
+      ## newdata <- data.frame(Dist.time = unique(data$Dist.time)) |>
+      ##         crossing(s = data$s, c = data$c, d = data$d, b = data$b, u = data$u)
 
-      ## Restrict this to only where the sum of the rows is one so
-      ## that our newdata is one row per disturbance (for Before and
-      ## After)
-      newdata <- newdata |>
-              rowwise() |>
-              filter(sum(c_across(where(is.numeric))) == 1)
-      ## Further compress this to just a single Before (no disturbances)
-      ## and single disturbance types for each After
-      newdata <- newdata |>
-        filter(Dist.time == "After") |>
-        bind_rows(data.frame(
-          Dist.time = "Before",
-          s = 0, c = 0, d = 0, b = 0, u = 0
-        ))
+      ## ## Restrict this to only where the sum of the rows is one so
+      ## ## that our newdata is one row per disturbance (for Before and
+      ## ## After)
+      ## newdata <- newdata |>
+      ##         rowwise() |>
+      ##         filter(sum(c_across(where(is.numeric))) == 1)
+      ## ## Further compress this to just a single Before (no disturbances)
+      ## ## and single disturbance types for each After
+      ## newdata <- newdata |>
+      ##   filter(Dist.time == "After") |>
+      ##   bind_rows(data.frame(
+      ##     Dist.time = "Before",
+      ##     s = 0, c = 0, d = 0, b = 0, u = 0
+      ##   ))
 
+
+
+      newdata <- crossing(Dist.time = data$Dist.time) |>
+        crossing(s = c(0, 1), c = c(0, 1), d = c(0, 1), b = c(0, 1), u = c(0, 1)) |> 
+        mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA, Dist.number =  NA)
+      newdata <- newdata |>
+        filter((Dist.time == "Before" & s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 1 & d == 0 & c == 0 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 1 & c == 0 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 0 & c == 1 & b == 0 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
+                 (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 0 & u == 1) 
+        ) |> 
+        mutate(Dist = case_when(
+          s == 1 ~ "s",
+          c == 1 ~ "c",
+          d == 1 ~ "d",
+          b == 1 ~ "b",
+          u == 1 ~ "u",
+          .default = "Before"
+        )) 
+
+
+      
       data_pred <- data |>
-              bind_rows(newdata) 
+        bind_rows(newdata |>
+                    dplyr::select(s, b, c, d, u)) |> 
+        mutate(SS = paste(s, b, c, d, u))
       i_newdata <- (nrow(data) + 1):nrow(data_pred)
 
-      ## Pre-defined contrasts
-      ## Compare Afters (for each disturbance) to Before (no disturbance)
-      ## for each sector/shelf
-      Xmat <- model.matrix(~ Dist.time + (s + b + c + d + u), data = newdata)
-
-      nd <- newdata |>
-        mutate(Dist = case_when(s == 1 ~ "s",
-          c == 1 ~ "c",
-          d == 1 ~ "d",
-          b == 1 ~ "b",
-          u == 1 ~ "u")) |>
-        dplyr::select(-any_of(c("s", "c", "d", "b", "u"))) |>
-        bind_cols(Xmat) |>
-        filter(!is.na(Dist)) |>
-        mutate(`(Intercept)` = 0,
-          Dist.timeBefore = -1) |>
-        dplyr::select(-Dist.time, -Dist) |>
-        as.matrix()
-
-      lincomb <- inla.make.lincombs(as.data.frame(nd))
-
-      nd1 <- newdata |>
-        mutate(Dist = case_when(s == 1 ~ "s",
-          c == 1 ~ "c",
-          d == 1 ~ "d",
-          b == 1 ~ "b",
-          u == 1 ~ "u")) |>
-        dplyr::select(-any_of(c("s", "c", "d", "b", "u"))) |> 
-        filter(!is.na(Dist)) 
     }
     ## Fit model
     {
       if (rerun) {
         mod <- inla(n.points ~ s + b + c + d + u +
+                      f(model = "iid", SS) +
                       ## f(model = "iid", Dist.number) +
                       f(model = "iid", AIMS_REEF_NAME) +
                       f(model = "iid", Site) +
                       f(model = "iid", Transect),
           data = data_pred,
           Ntrials = data_pred$total.points,
-          ## lincomb =  lincomb,
           family = "zeroinflatedbinomial1", #"binomial" 
           control.predictor = list(link = 1, compute = TRUE),
           control.compute = list(config = TRUE,
@@ -431,68 +383,29 @@ data <- full_data
             return.marginals.predictor = TRUE
           )
         )
-        ## summary(mod)
+        summary(mod)
         ## autoplot(mod)
-        save(mod, file = "../data/modelled/mod_inla_5.1.RData")
+        save(mod, file = "../data/modelled/mod_inla_6.1.RData")
       }
     }
-    ## Diagnostics
+    ## Partial plots
     {
-      ggplot_inla_residuals(mod,
-        observed = data$n.points / data$total.points, CI = TRUE
-      )
-      ggplot_inla_residuals2(mod,
-        observed = data$n.points / data$total.points, CI = TRUE
-      )
-      wrap_plots(
-        pit_qq_plot(mod, i.mod = 1:nrow(data), logit_scale = TRUE),
-        pit_plot(mod, i.mod = 1:nrow(data)),
-        pit_resid_plot(mod, i.mod = 1:nrow(data)),
-        pit_hist_plot(mod, i.mod = 1:nrow(data))
-      ) +
-      plot_layout(ncol = 3)
+      draws <- inla.posterior.sample(n=1000, result = mod)
+      cellmeans <- newdata |> cbind(sapply(draws, function(x) x$latent[i_newdata]))
+      cellmeans_inla <- cellmeans |>
+        pivot_longer(cols = matches("^[0-9]*$"), names_to = ".draws") |>
+        dplyr::select(Dist, .draws, value) |>
+        posterior::as_draws() |>
+        mutate(.draw = .draws) |>
+        dplyr::select(-.draws) |>
+        mutate(value = plogis(value))
+      cellmeans_summ_inla <- cellmeans_inla |> 
+        group_by(Dist) |>
+        summarise_draws(median, HDInterval::hdi)
 
-      mod.cpo <- data.frame(cpo = mod$cpo$cpo,
-        pit = mod$cpo$pit,
-        failure = mod$cpo$failure) |>
-        filter(failure == 0) |>
-        mutate(row = 1:n())
-
-      mod$cpo$failure
-
-      g1 <- mod.cpo |>
-        ggplot(aes(y = cpo, x = row)) +
-        geom_point()
-      g2 <- mod.cpo |>
-        ggplot(aes(x = cpo)) +
-        geom_histogram()
-      g3 <- mod.cpo |>
-        ggplot(aes(y = pit, x = row)) +
-        geom_point()
-      g4 <- mod.cpo |>
-        ggplot(aes(x = pit)) +
-        geom_histogram()
-
-      (g1 + g2)/(g3 + g4)
-
-      ## Ideally, we want to see that no CPO or PIT is very different in
-      ## value from any others (often not informative in binomial models)
-      ## and that the histograms are relatively flat (not really the case
-      ## here).
-
-      ## ggplot_inla_residuals(mod, observed = data$n.points)
-      ## ggplot_inla_residuals2(mod, observed = data$n.points)
-    }
-    ## DHARMa version 1
-    {
-      preds <- posterior_predict.inla(mod, newdata = data)
-      mod_resids <- createDHARMa(simulatedResponse = t(preds),
-        observedResponse = data$n.points,
-        fittedPredictedResponse = apply(preds, 2, mean),
-        integerResponse = TRUE)
-      mod_resids |> plot()
-      mod_resids |> testDispersion()
-      mod_resids |> testZeroInflation()
+      save(cellmeans_summ_inla, file = "../data/modelled/cellmeans_summ_inla_6.1.RData")
+      cellmeans_summ_inla |> ggplot(aes(y = median, x = Dist)) +
+        geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5)) 
     }
     ## Partial plots
     {
@@ -556,74 +469,9 @@ data <- full_data
     }
     ## Contrasts
     {
-      if (1 != 2) {
-        nd.pred <- nd1 |>
-          bind_cols(mod$summary.lincomb.derived) |>
-          mutate(across(where(is.numeric), exp))
-        nd.pred |> ggplot(aes(x = `0.5quant`, y = Dist)) +
-          geom_vline(xintercept = 1, linetype = "dashed") +
-          geom_pointrange(aes(xmin = `0.025quant`, xmax = `0.975quant`)) +
-          scale_x_continuous("Effect (Before - After) on a fold scale",
-            trans = "log2", breaks = scales::extended_breaks(n = 8)
-          )
-      }
-    }
-    ## Contrasts - version 2
-    {
-      newdata_fitted <- mod |>
-        posterior_fitted.inla(newdata)
-
-      newdata_fitted <- newdata_fitted |>
-        mutate(Dist = case_when(s == 1 ~ "s",
-          c == 1 ~ "c",
-          d == 1 ~ "d",
-          b == 1 ~ "b",
-          u == 1 ~ "u")) |>
-        dplyr::select(-any_of(c("s", "c", "d", "b", "u"))) |>
-                ungroup() |>
-                dplyr::select(-Dist.time) |>
-                group_by(.draw) |>
-                nest() |> 
-      ## newdata_fitted[104, ] |> 
-        mutate(data1 = map(
-          .x = data,
-          .f = ~ {
-            .x <- .x |> slice(6:1)
-            xmat <- cbind(-1, 1 * contr.treatment(6, base = 1, contrast = TRUE))
-            xmat <- xmat[-1, ]
-            x <- log(as.vector(as.vector(.x$Values)))
-            data.frame(
-                    Dist = .x$Dist[-1],
-                    Values = exp(as.vector(x %*% t(xmat)))
-            )
-           
-          }
-        )) |>
-        dplyr::select(-data) |>
-                unnest(c(data1)) |>
-                ungroup() |>
-                group_by(Dist) |> 
-        posterior::summarise_draws(
-          median,
-          HDInterval::hdi,
-          Pl = ~ mean(.x < 1),
-          Pg = ~ mean(.x > 1)
-        )
-
-      newdata_fitted |> ggplot(aes(x = median, y = Dist)) +
-              geom_vline(xintercept = 1, linetype = "dashed") +
-              geom_pointrange(aes(xmin = lower, xmax = upper)) +
-              scale_x_continuous("Effect (Before - After) on a fold scale",
-                      trans = "log2", breaks = scales::extended_breaks(n = 8)
-              )
-
-    }
-    ## Contrasts - version 3
-    {
-
       eff_inla <- cellmeans_inla |>
         mutate(Values = value) |>
-        nest(.by = .draws) |>
+        nest(.by = .draw) |>
         mutate(eff = map(
           .x = data,
           .f = ~ before_vs_afters(.x)
@@ -632,23 +480,23 @@ data <- full_data
         unnest(c(eff))
 
       eff_summ_inla <- eff_inla |> 
-        dplyr::select(-.draws) |>
+        dplyr::select(-.draw) |>
         group_by(Dist) |> 
         summarise_draws(
           median,
           HDInterval::hdi
         )
 
-      save(eff_summ_inla, file = "../data/modelled/eff_summ_inla_5.1.RData")
+      save(eff_summ_inla, file = "../data/modelled/eff_summ_inla_6.1.RData")
     }
   }
   ## Comparisons
   {
     
-    load(file = "../data/modelled/cellmeans_summ_raw_5.1.RData")
-    load(file = "../data/modelled/cellmeans_summ_glmmTMB_5.1.RData")
-    load(file = "../data/modelled/cellmeans_summ_brm_5.1.RData")
-    load(file = "../data/modelled/cellmeans_summ_inla_5.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_raw_6.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_glmmTMB_6.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_brm_6.1.RData")
+    load(file = "../data/modelled/cellmeans_summ_inla_6.1.RData")
 
     cellmeans_summ <- bind_rows(
       cellmeans_summ_raw |>
@@ -670,10 +518,10 @@ data <- full_data
       geom_pointrange(aes(ymin = lower, ymax = upper),
         position = position_dodge(width = 0.5)) 
 
-    load(file = "../data/modelled/eff_summ_raw_5.1.RData")
-    load(file = "../data/modelled/eff_summ_glmmTMB_5.1.RData")
-    load(file = "../data/modelled/eff_summ_brm_5.1.RData")
-    load(file = "../data/modelled/eff_summ_inla_5.1.RData")
+    load(file = "../data/modelled/eff_summ_raw_6.1.RData")
+    load(file = "../data/modelled/eff_summ_glmmTMB_6.1.RData")
+    load(file = "../data/modelled/eff_summ_brm_6.1.RData")
+    load(file = "../data/modelled/eff_summ_inla_6.1.RData")
 
     eff_summ <- bind_rows(
       eff_summ_raw |>
@@ -681,7 +529,7 @@ data <- full_data
         dplyr::rename(median = Values),
       eff_summ_glmmTMB |>
         mutate(method = "glmmTMB", type = "median") |>
-        dplyr::rename(median = estimate, lower = asymp.LCL, upper = asymp.UCL),
+        dplyr::rename(median = Values),
       eff_summ_brm |>
         mutate(method = "brm", type = "median") |>
         dplyr::rename(median = median, lower = lower, upper = upper),
