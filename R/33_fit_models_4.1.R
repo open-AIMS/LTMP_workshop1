@@ -16,7 +16,7 @@ data <- full_data
     ## Focus on only the necessary variables
     data <- data |>
       dplyr::select(
-        n.points, total.points, s, c, d, b, u,
+        n.points, total.points, Dist.time, s, c, d, b, u,
         AIMS_REEF_NAME, Site, Transect, Dist.number
       ) |>
       mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x)))
@@ -387,8 +387,9 @@ data <- full_data
       data <- full_data
 
       data <- data |>
-        dplyr::select(n.points, total.points, s, c, d, b, u,
-          AIMS_REEF_NAME, Site, Transect, Dist.time)
+        dplyr::select(n.points, total.points, Dist.time, s, c, d, b, u,
+          AIMS_REEF_NAME, Site, Transect, Dist.time) |> 
+        mutate(across(c(s, c, d, b, u), \(x) ifelse(Dist.time == "Before", 0, x))) 
       ## data <- data |>
       ##         filter(!SecShelf %in% c("CG M", "PC M", "PC O")) |>
       ##         droplevels()
@@ -422,7 +423,7 @@ data <- full_data
             f(model = "iid", Transect),
           data = data_pred,
           Ntrials = data_pred$total.points,
-          family = "zeroinflatedbinomial0", # "binomial",
+          family = "zeroinflatedbinomial1", # "binomial",
           control.predictor = list(link = 1, compute = TRUE),
           control.compute = list(
             config = TRUE,
