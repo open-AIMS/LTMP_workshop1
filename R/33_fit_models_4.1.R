@@ -162,46 +162,50 @@ data <- full_data
     }
     ## Partial plot - old method
     {
-      newdata <- crossing(s = c(0,1), d = c(0, 1), c = c(0, 1), b = c(0, 1), u = c(0, 1)) |>
-        mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA, Dist.number =  NA)
-      newdata <- newdata |>
-        filter((s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
-                 (s == 1 & d == 0 & c == 0 & b == 0 & u == 0) |
-                 (s == 0 & d == 1 & c == 0 & b == 0 & u == 0) |
-                 (s == 0 & d == 0 & c == 1 & b == 0 & u == 0) |
-                 (s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
-                 (s == 0 & d == 0 & c == 0 & b == 0 & u == 1) 
-        )
+      if (1 != 2) {
+        newdata <- crossing(s = c(0,1), d = c(0, 1), c = c(0, 1), b = c(0, 1), u = c(0, 1)) |>
+          mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA, Dist.number =  NA)
+        newdata <- newdata |>
+          filter((s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
+                   (s == 1 & d == 0 & c == 0 & b == 0 & u == 0) |
+                   (s == 0 & d == 1 & c == 0 & b == 0 & u == 0) |
+                   (s == 0 & d == 0 & c == 1 & b == 0 & u == 0) |
+                   (s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
+                   (s == 0 & d == 0 & c == 0 & b == 0 & u == 1) 
+          )
 
-      p <- predict(mod_glmmTMB, newdata = newdata, se.fit = TRUE)
-      newdata <- newdata |>
-        bind_cols(fit = p$fit, se = p$se.fit) |>
-        mutate(Pred = plogis(fit), lower = plogis(fit - 2 * se), upper = plogis(fit + 2 * se))
-      newdata <- newdata |>
-        mutate(Dist = case_when(
-          s == 1 ~ "s",
-          c == 1 ~ "c",
-          d == 1 ~ "d",
-          b == 1 ~ "b",
-          u == 1 ~ "u",
-          .default = "Before"
-        )) 
+        p <- predict(mod_glmmTMB, newdata = newdata, se.fit = TRUE)
+        newdata <- newdata |>
+          bind_cols(fit = p$fit, se = p$se.fit) |>
+          mutate(Pred = plogis(fit), lower = plogis(fit - 2 * se), upper = plogis(fit + 2 * se))
+        newdata <- newdata |>
+          mutate(Dist = case_when(
+            s == 1 ~ "s",
+            c == 1 ~ "c",
+            d == 1 ~ "d",
+            b == 1 ~ "b",
+            u == 1 ~ "u",
+            .default = "Before"
+          )) 
 
-      cellmeans_summ_glmmTMB <- newdata |> dplyr::select(Dist, Pred, lower, upper)
-      ## save(cellmeans_summ_glmmTMB, file = "../data/modelled/cellmeans_summ_glmmTMB_4.1.RData")
-      
-      ## newdata |>
-      ##   ggplot(aes(y = Pred, x = Dist, colour = factor(Dist.time))) +
-      ##   geom_pointrange(aes(ymin = lower, ymax = upper),
-      ##     position = position_dodge(width = 0.5)) 
+        cellmeans_summ_glmmTMB <- newdata |> dplyr::select(Dist, Pred, lower, upper)
+        ## save(cellmeans_summ_glmmTMB, file = "../data/modelled/cellmeans_summ_glmmTMB_4.1.RData")
+        
+        ## newdata |>
+        ##   ggplot(aes(y = Pred, x = Dist, colour = factor(Dist.time))) +
+        ##   geom_pointrange(aes(ymin = lower, ymax = upper),
+        ##     position = position_dodge(width = 0.5)) 
+      }
     }
     ## Contrasts - old method
     {
-      eff_summ_glmmTMB <- 
-        cellmeans_summ_glmmTMB |>
-        mutate(Values = Pred) |> 
-        before_vs_afters()
-      ## save(eff_summ_glmmTMB, file = "../data/modelled/eff_summ_glmmTMB_4.1.RData")
+      if (1 != 2) {
+        eff_summ_glmmTMB <- 
+          cellmeans_summ_glmmTMB |>
+          mutate(Values = Pred) |> 
+          before_vs_afters()
+        ## save(eff_summ_glmmTMB, file = "../data/modelled/eff_summ_glmmTMB_4.1.RData")
+      }
     }
   }
   ## brms
@@ -418,7 +422,7 @@ data <- full_data
             f(model = "iid", Transect),
           data = data_pred,
           Ntrials = data_pred$total.points,
-          family = "zeroinflatedbinomial2", # "binomial",
+          family = "zeroinflatedbinomial0", # "binomial",
           control.predictor = list(link = 1, compute = TRUE),
           control.compute = list(
             config = TRUE,
