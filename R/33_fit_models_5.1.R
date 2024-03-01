@@ -229,65 +229,120 @@ data <- full_data
     ## Partial plot
     {
       load(file = "../data/modelled/mod_brm_5.1.RData")
-      newdata <- crossing(Dist.time = data$Dist.time) |>
-        crossing(s = c(0,1), d = c(0, 1), c = c(0, 1), b = c(0, 1), u = c(0, 1)) |>
-        mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA, Dist.number =  NA)
-      newdata <- newdata |>
-        filter((Dist.time == "Before" & s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
-                 (Dist.time == "After" & s == 1 & d == 0 & c == 0 & b == 0 & u == 0) |
-                 (Dist.time == "After" & s == 0 & d == 1 & c == 0 & b == 0 & u == 0) |
-                 (Dist.time == "After" & s == 0 & d == 0 & c == 1 & b == 0 & u == 0) |
-                 (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
-                 (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 0 & u == 1)) |>
-        mutate(total.points = 1)
 
-      p <- t(brms::posterior_epred(mod_brm, newdata = newdata, se.fit = TRUE))
-      cellmeans_brm <-
-        newdata |>
-        cbind(p) |>
-        pivot_longer(cols = matches("^[0-9]*$"), names_to = ".draws") |>
+      newdata <- crossing(s = c(0,1), c = c(0, 1), d = c(0, 1),  b = c(0, 1), u = c(0, 1)) |>
+        filter((s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
+                 (s == 1 & d == 0 & c == 0 & b == 0 & u == 0) |
+                 (s == 0 & d == 1 & c == 0 & b == 0 & u == 0) |
+                 (s == 0 & d == 0 & c == 1 & b == 0 & u == 0) |
+                 (s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
+                 (s == 0 & d == 0 & c == 0 & b == 0 & u == 1) 
+        ) |> 
         mutate(Dist = case_when(
-          s == 1 ~ "s",
-          c == 1 ~ "c",
-          d == 1 ~ "d",
-          b == 1 ~ "b",
-          u == 1 ~ "u",
-          .default = "Before"
-        )) |>
-        dplyr::select(-any_of(c(
-          "s", "d", "c", "b", "u", "AIMS_REEF_NAME",
-          "Dist.time", "Site", "Transect", "Dist.number", "total.points"
-        )))
+                s == 1 ~ "s",
+                c == 1 ~ "c",
+                d == 1 ~ "d",
+                b == 1 ~ "b",
+                u == 1 ~ "u",
+                .default = "Before"
+        ), Dist = factor(Dist, levels = c("Before", "s", "c", "d", "b", "u"))) |>
+        arrange(Dist) |> 
+        dplyr::select(-any_of(c("s", "c", "d", "b", "u")))
+      fit <- mod_brm |>
+        as.data.frame() |>
+        dplyr::select(matches("^b_[^z].*", perl = TRUE))
 
-      cellmeans_summ_brm <- cellmeans_brm |>
-              dplyr::select(-.draws) |> 
+      cellmeans_brm <- cbind(newdata, t(as.matrix(fit) %*% t(Xmat))) |>
+        pivot_longer(cols = matches("^[0-9]*$"), names_to = ".draws")
+      cellmeans_summ_brm <- cellmeans_brm |> 
+        dplyr::select(-.draws) |>
         group_by(Dist) |>
-        summarise_draws(median, HDInterval::hdi) |> 
-        dplyr::select(Dist, median, lower, upper)
+        mutate(value =  plogis(value)) |>
+        summarise_draws(median, HDInterval::hdi)
+
       save(cellmeans_summ_brm, file = "../data/modelled/cellmeans_summ_brm_5.1.RData")
       
     }
     ## Contrasts
     {
-      eff_brm <- cellmeans_brm |>
-        mutate(Values = value) |>
-        nest(.by = .draws) |>
-        mutate(eff = map(
-          .x = data,
-          .f = ~ before_vs_afters(.x)
-        )) |>
-        dplyr::select(-data) |>
-        unnest(c(eff))
+      
+      XXmat <- cbind(0, contr.treatment(6))[-1, ]
 
+      eff_brm <- cbind(newdata[-1,], t(as.matrix(fit) %*% t(XXmat))) |>
+        pivot_longer(cols = matches("^[0-9]*$"), names_to = ".draws")
       eff_summ_brm <- eff_brm |> 
         dplyr::select(-.draws) |>
-        group_by(Dist) |> 
-        summarise_draws(
-          median,
-          HDInterval::hdi
-        )
-      
+        group_by(Dist) |>
+        mutate(value =  exp(value)) |>
+        summarise_draws(median, HDInterval::hdi)
       save(eff_summ_brm, file = "../data/modelled/eff_summ_brm_5.1.RData")
+    }
+    ## Partial plot - old
+    {
+      if (1 ==  2) {
+        load(file = "../data/modelled/mod_brm_5.1.RData")
+        newdata <- crossing(Dist.time = data$Dist.time) |>
+          crossing(s = c(0,1), d = c(0, 1), c = c(0, 1), b = c(0, 1), u = c(0, 1)) |>
+          mutate(AIMS_REEF_NAME = NA, Site = NA, Transect = NA, Dist.number =  NA)
+        newdata <- newdata |>
+          filter((Dist.time == "Before" & s == 0 & d == 0 & c == 0 & b == 0 & u == 0) |
+                   (Dist.time == "After" & s == 1 & d == 0 & c == 0 & b == 0 & u == 0) |
+                   (Dist.time == "After" & s == 0 & d == 1 & c == 0 & b == 0 & u == 0) |
+                   (Dist.time == "After" & s == 0 & d == 0 & c == 1 & b == 0 & u == 0) |
+                   (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 1 & u == 0) |
+                   (Dist.time == "After" & s == 0 & d == 0 & c == 0 & b == 0 & u == 1)) |>
+          mutate(total.points = 1)
+
+        p <- t(brms::posterior_epred(mod_brm, newdata = newdata, se.fit = TRUE))
+        cellmeans_brm <-
+          newdata |>
+          cbind(p) |>
+          pivot_longer(cols = matches("^[0-9]*$"), names_to = ".draws") |>
+          mutate(Dist = case_when(
+            s == 1 ~ "s",
+            c == 1 ~ "c",
+            d == 1 ~ "d",
+            b == 1 ~ "b",
+            u == 1 ~ "u",
+            .default = "Before"
+          )) |>
+          dplyr::select(-any_of(c(
+            "s", "d", "c", "b", "u", "AIMS_REEF_NAME",
+            "Dist.time", "Site", "Transect", "Dist.number", "total.points"
+          )))
+
+        cellmeans_summ_brm <- cellmeans_brm |>
+          dplyr::select(-.draws) |> 
+          group_by(Dist) |>
+          summarise_draws(median, HDInterval::hdi) |> 
+          dplyr::select(Dist, median, lower, upper)
+        save(cellmeans_summ_brm, file = "../data/modelled/cellmeans_summ_brm_5.1.RData")
+      }
+      
+    }
+    ## Contrasts - old
+    {
+      if(1 == 2) {
+        eff_brm <- cellmeans_brm |>
+          mutate(Values = value) |>
+          nest(.by = .draws) |>
+          mutate(eff = map(
+            .x = data,
+            .f = ~ before_vs_afters(.x)
+          )) |>
+          dplyr::select(-data) |>
+          unnest(c(eff))
+
+        eff_summ_brm <- eff_brm |> 
+          dplyr::select(-.draws) |>
+          group_by(Dist) |> 
+          summarise_draws(
+            median,
+            HDInterval::hdi
+          )
+        
+        save(eff_summ_brm, file = "../data/modelled/eff_summ_brm_5.1.RData")
+      }
     }
   }
   ## INLA
@@ -358,24 +413,26 @@ data <- full_data
     }
     ## Fit model
     {
-      mod <- inla(n.points ~ Dist.time + (s + b + c + d + u) +
-                    f(model = "iid", Dist.number) +
-                    f(model = "iid", AIMS_REEF_NAME) +
-                    f(model = "iid", Site) +
-                    f(model = "iid", Transect),
-        data = data_pred,
-        Ntrials = data_pred$total.points,
-        lincomb =  lincomb,
-        family = "zeroinflatedbinomial1", #"binomial" 
-        control.predictor = list(link = 1, compute = TRUE),
-        control.compute = list(config = TRUE,
-          dic = TRUE, waic = TRUE, cpo = TRUE,
-          return.marginals.predictor = TRUE
+      if (rerun) {
+        mod <- inla(n.points ~ s + b + c + d + u +
+                      ## f(model = "iid", Dist.number) +
+                      f(model = "iid", AIMS_REEF_NAME) +
+                      f(model = "iid", Site) +
+                      f(model = "iid", Transect),
+          data = data_pred,
+          Ntrials = data_pred$total.points,
+          ## lincomb =  lincomb,
+          family = "zeroinflatedbinomial1", #"binomial" 
+          control.predictor = list(link = 1, compute = TRUE),
+          control.compute = list(config = TRUE,
+            dic = TRUE, waic = TRUE, cpo = TRUE,
+            return.marginals.predictor = TRUE
+          )
         )
-      )
-      ## summary(mod)
-      ## autoplot(mod)
-      save(mod, file = "../data/modelled/mod_inla_5.1.RData")
+        ## summary(mod)
+        ## autoplot(mod)
+        save(mod, file = "../data/modelled/mod_inla_5.1.RData")
+      }
     }
     ## Diagnostics
     {
@@ -437,40 +494,42 @@ data <- full_data
     }
     ## Partial plots
     {
-      newdata_pred <- newdata |>
-        bind_cols(mod$summary.fitted.values[i_newdata, ])
-      newdata_pred 
+      if (1 == 2) {
+        newdata_pred <- newdata |>
+          bind_cols(mod$summary.fitted.values[i_newdata, ])
+        newdata_pred 
 
-      newdata_pred <- newdata_pred |>
-        mutate(Dist = case_when(
-          s == 1 ~ "s",
-          c == 1 ~ "c",
-          d == 1 ~ "d",
-          b == 1 ~ "b",
-          u == 1 ~ "u"
-        ))
-      ## newdata_pred |>
-      ##   ggplot(aes(y = `0.5quant`, x = factor(Dist), color = Dist.time)) +
-      ##   geom_pointrange(
-      ##     aes(
-      ##       ymin = `0.025quant`,
-      ##       ymax = `0.975quant`
-      ##     ),
-      ##     position = position_dodge(width = 0.5)
-      ##   )
+        newdata_pred <- newdata_pred |>
+          mutate(Dist = case_when(
+            s == 1 ~ "s",
+            c == 1 ~ "c",
+            d == 1 ~ "d",
+            b == 1 ~ "b",
+            u == 1 ~ "u"
+          ))
+        ## newdata_pred |>
+        ##   ggplot(aes(y = `0.5quant`, x = factor(Dist), color = Dist.time)) +
+        ##   geom_pointrange(
+        ##     aes(
+        ##       ymin = `0.025quant`,
+        ##       ymax = `0.975quant`
+        ##     ),
+        ##     position = position_dodge(width = 0.5)
+        ##   )
+      }
     }
     ## Partial plot - version 3
     {
-
+      load(file = "../data/modelled/mod_inla_5.1.RData")
       draws <- inla.posterior.sample(n = 1000, result = mod)
       contents <- mod$misc$configs$contents
       ## cellmeans <- newdata |> bind_cols(sapply(draws, function(x) x$latent[i_newdata]))
       cellmeans <- newdata |> cbind(sapply(draws, function(x) x$latent[i_newdata]))
       cellmeans_inla <- cellmeans |>
-              ## pivot_longer(cols = matches("^[\\.]{3}[0-9]*"), names_to = ".draws") |>
-              pivot_longer(cols = matches("^[0-9]*$"), names_to = ".draws") |>
-              posterior::as_draws() |>
-              mutate(.draw = .draws) |>
+        ## pivot_longer(cols = matches("^[\\.]{3}[0-9]*"), names_to = ".draws") |>
+        pivot_longer(cols = matches("^[0-9]*$"), names_to = ".draws") |>
+        posterior::as_draws() |>
+        mutate(.draw = .draws) |>
         mutate(Dist = case_when(
           s == 1 ~ "s",
           c == 1 ~ "c",
@@ -486,7 +545,7 @@ data <- full_data
         mutate(value = plogis(value))
 
       cellmeans_summ_inla <- cellmeans_inla |> 
-      dplyr::select(-.draws) |>
+        dplyr::select(-.draws) |>
         group_by(Dist) |> 
         summarise_draws(median, HDInterval::hdi)
 
@@ -495,15 +554,17 @@ data <- full_data
     }
     ## Contrasts
     {
-      nd.pred <- nd1 |>
-        bind_cols(mod$summary.lincomb.derived) |>
-        mutate(across(where(is.numeric), exp))
-      nd.pred |> ggplot(aes(x = `0.5quant`, y = Dist)) +
-        geom_vline(xintercept = 1, linetype = "dashed") +
-        geom_pointrange(aes(xmin = `0.025quant`, xmax = `0.975quant`)) +
-        scale_x_continuous("Effect (Before - After) on a fold scale",
-          trans = "log2", breaks = scales::extended_breaks(n = 8)
-        )
+      if (1 != 2) {
+        nd.pred <- nd1 |>
+          bind_cols(mod$summary.lincomb.derived) |>
+          mutate(across(where(is.numeric), exp))
+        nd.pred |> ggplot(aes(x = `0.5quant`, y = Dist)) +
+          geom_vline(xintercept = 1, linetype = "dashed") +
+          geom_pointrange(aes(xmin = `0.025quant`, xmax = `0.975quant`)) +
+          scale_x_continuous("Effect (Before - After) on a fold scale",
+            trans = "log2", breaks = scales::extended_breaks(n = 8)
+          )
+      }
     }
     ## Contrasts - version 2
     {
